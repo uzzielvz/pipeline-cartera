@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Reporte de Antigüedad{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="mb-4 text-center">Reporte de Antigüedad</h5>
+
+                <form action="{{ url_for('reportes.procesar_antiguedad') }}" method="post" enctype="multipart/form-data" id="uploadForm">
+                    <div class="mb-4">
+                        <input type="file" class="form-control" id="archivo" name="archivo" 
+                               accept=".xlsx,.xls" required>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('index') }}" class="btn">
+                            ← Volver
+                        </a>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <span id="btnText">Procesar</span>
+                            <span id="btnSpinner" class="spinner-border spinner-border-sm ms-2" style="display: none;"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('uploadForm').addEventListener('submit', function() {
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
+    
+    submitBtn.disabled = true;
+    btnText.textContent = 'Procesando...';
+    btnSpinner.style.display = 'inline-block';
+});
+
+// Auto-hide alerts after 5 seconds
+setTimeout(function() {
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(function(alert) {
+        const bsAlert = new bootstrap.Alert(alert);
+        bsAlert.close();
+    });
+}, 5000);
+</script>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Automatizador Crediflexi{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="text-center mb-5">
+            <h1 class="display-4">Crediflexi</h1>
+        </div>
+
+        <div class="card">
+            <div class="card-body text-center">
+                <h5 class="mb-4">Reporte de Antigüedad</h5>
+                <a href="{{ url_for('reportes.antiguedad_form') }}" class="btn btn-primary">
+                    Procesar
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,118 @@
+/* Estilo minimalista japonés */
+
+* {
+    font-family: 'Segoe UI', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+}
+
+body {
+    background: #fafafa;
+    color: #2c2c2c;
+    line-height: 1.6;
+}
+
+.navbar {
+    background: #2c2c2c !important;
+    border: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.navbar-brand {
+    font-weight: 300;
+    letter-spacing: 1px;
+}
+
+.card {
+    border: none;
+    border-radius: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    background: white;
+}
+
+.card-header {
+    background: white;
+    border-bottom: 1px solid #e8e8e8;
+    border-radius: 0;
+    padding: 2rem 2rem 1rem;
+}
+
+.card-body {
+    padding: 2rem;
+}
+
+.btn {
+    border-radius: 0;
+    border: 1px solid #2c2c2c;
+    background: white;
+    color: #2c2c2c;
+    padding: 0.75rem 2rem;
+    font-weight: 300;
+    letter-spacing: 0.5px;
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    background: #2c2c2c;
+    color: white;
+    transform: none;
+}
+
+.btn-primary {
+    background: #2c2c2c;
+    color: white;
+    border-color: #2c2c2c;
+}
+
+.btn-primary:hover {
+    background: #1a1a1a;
+    border-color: #1a1a1a;
+}
+
+.form-control {
+    border-radius: 0;
+    border: 1px solid #e8e8e8;
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+}
+
+.form-control:focus {
+    border-color: #2c2c2c;
+    box-shadow: 0 0 0 0.2rem rgba(44, 44, 44, 0.1);
+}
+
+.alert {
+    border-radius: 0;
+    border: none;
+    background: #f8f8f8;
+    color: #666;
+}
+
+.display-4 {
+    font-weight: 200;
+    letter-spacing: 2px;
+}
+
+.lead {
+    font-weight: 300;
+    color: #666;
+}
+
+.text-primary {
+    color: #2c2c2c !important;
+}
+
+/* Eliminar efectos hover innecesarios */
+.card:hover {
+    transform: none;
+}
+
+/* Spinner minimalista */
+.spinner-border-sm {
+    width: 0.8rem;
+    height: 0.8rem;
+    border-width: 1px;
+}
+
+/* Espaciado minimalista */
+.mt-4 { margin-top: 2rem !important; }
+.mb-4 { margin-bottom: 2rem !important; }
+.mb-5 { margin-bottom: 3rem !important; }
