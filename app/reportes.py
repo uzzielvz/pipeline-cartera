@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, request, send_file, flash, redirec
 import pandas as pd
 from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Font
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.utils import get_column_letter
 import os
 import re
 from datetime import datetime
@@ -28,8 +30,8 @@ def generar_link_google_maps(geolocalizacion):
     
     Casos manejados:
     - URL existente de Google Maps: ("Ver en mapa", url_original)
-    - Coordenadas GPS: (coordenadas_texto, url_búsqueda)
-    - Dirección de texto: (dirección_texto, url_búsqueda)
+    - Coordenadas GPS: ("Ver en mapa", url_búsqueda)
+    - Dirección de texto: ("Ver en mapa", url_búsqueda)
     - Vacío/nulo: ("Ver en mapa", url_generico)
     """
     # Caso 1: Valor vacío o nulo
@@ -66,14 +68,14 @@ def generar_link_google_maps(geolocalizacion):
                 
                 # Crear URL de Google Maps
                 url = f"https://www.google.com/maps/search/?api=1&query={lat_decimal},{lon_decimal}"
-                return (geolocalizacion, url)
+                return ("Ver en mapa", url)
         except:
             pass
     
     # Caso 4: Dirección de texto - crear búsqueda
     direccion_encoded = urllib.parse.quote_plus(geolocalizacion)
     url = f"https://www.google.com/maps/search/?api=1&query={direccion_encoded}"
-    return (geolocalizacion, url)
+    return ("Ver en mapa", url)
 
 def asignar_rango_mora(dias_mora):
     """
@@ -120,9 +122,105 @@ def aplicar_formato_condicional(worksheet, columna_mora, num_filas):
         end_type='max', end_color='FF6464' # Rojo
     )
     
-    # Encuentra la letra de la columna 'Días de mora'
-    mora_col_letter = [col[0].column_letter for col in worksheet.iter_cols(min_row=1, max_row=1) if col[0].value == columna_mora][0]
-    worksheet.conditional_formatting.add(f'{mora_col_letter}2:{mora_col_letter}{num_filas + 1}', color_scale_rule)
+    # Encuentra la letra de la columna 'Días de mora' (ahora en fila 2)
+    mora_col_letter = [col[0].column_letter for col in worksheet.iter_cols(min_row=2, max_row=2) if col[0].value == columna_mora][0]
+    # Aplicar formato desde fila 3 (datos) hasta el final
+    worksheet.conditional_formatting.add(f'{mora_col_letter}3:{mora_col_letter}{num_filas + 2}', color_scale_rule)
+
+def crear_tabla_excel(worksheet, df, sheet_name):
+    """
+    Convierte un rango de datos en una tabla formal de Excel con 10 columnas adicionales y títulos combinados.
+    
+    Estructura:
+    - Fila 1: Títulos superiores combinados y coloreados
+    - Fila 2: Encabezados de la tabla (datos + 10 en blanco)
+    - Fila 3+: Datos de la tabla
+    
+    Args:
+        worksheet: El objeto de la hoja de Excel
+        df: El DataFrame correspondiente con los datos
+        sheet_name: El nombre de la hoja para crear un nombre único de tabla
+    """
+    try:
+        from openpyxl.styles import PatternFill, Alignment
+        
+        # Calcular el rango de la tabla dinámicamente
+        num_filas_datos = len(df)  # Número de filas de datos
+        num_filas_tabla = num_filas_datos + 1  # +1 para incluir el encabezado
+        num_columnas_originales = len(df.columns)
+        num_columnas_totales = num_columnas_originales + 10  # +10 columnas adicionales
+        
+        # Obtener las letras de las columnas
+        col_inicio = get_column_letter(1)  # Columna A
+        col_fin_original = get_column_letter(num_columnas_originales)  # Última columna de datos
+        col_fin_total = get_column_letter(num_columnas_totales)  # Última columna incluyendo las 10 adicionales
+        
+        # --- PASO 1: Crear títulos combinados con colores en la FILA 1 ---
+        # Distribuir uniformemente los títulos entre las 10 columnas adicionales
+        # Título 1 (Verde): "Información proporcionada por el gerente de" - primeras 5 columnas adicionales
+        titulo1_inicio = get_column_letter(num_columnas_originales + 1)
+        titulo1_fin = get_column_letter(num_columnas_originales + 5)
+        rango_titulo1 = f"{titulo1_inicio}1:{titulo1_fin}1"
+        worksheet.merge_cells(rango_titulo1)
+        
+        celda_titulo1 = worksheet[f"{titulo1_inicio}1"]
+        celda_titulo1.value = "Información proporcionada por el gerente de"
+        celda_titulo1.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")  # Verde claro
+        celda_titulo1.alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Título 2 (Azul): "Gestión del auxiliar de operaciones" - siguientes 5 columnas adicionales
+        titulo2_inicio = get_column_letter(num_columnas_originales + 6)
+        titulo2_fin = get_column_letter(num_columnas_originales + 10)
+        rango_titulo2 = f"{titulo2_inicio}1:{titulo2_fin}1"
+        worksheet.merge_cells(rango_titulo2)
+        
+        celda_titulo2 = worksheet[f"{titulo2_inicio}1"]
+        celda_titulo2.value = "Gestión del auxiliar de operaciones"
+        celda_titulo2.fill = PatternFill(start_color="87CEEB", end_color="87CEEB", fill_type="solid")  # Azul claro
+        celda_titulo2.alignment = Alignment(horizontal="center", vertical="center")
+        
+        # --- PASO 2: Agregar 10 encabezados completamente en blanco en la FILA 2 ---
+        for i in range(10):
+            col_letra = get_column_letter(num_columnas_originales + 1 + i)
+            worksheet.cell(row=2, column=num_columnas_originales + 1 + i, value="")
+        
+        # --- PASO 3: Crear la tabla con el rango correcto (empezando en FILA 2) ---
+        # Crear el rango de la tabla incluyendo las 10 columnas adicionales, empezando en fila 2
+        rango_tabla = f"{col_inicio}2:{col_fin_total}{num_filas_tabla + 1}"  # +1 porque startrow=1 mueve todo una fila
+        
+        # Crear el objeto Table con nombre único
+        nombre_tabla = f"Tabla_{sheet_name.replace(' ', '_')}"
+        tabla = Table(displayName=nombre_tabla, ref=rango_tabla)
+        
+        # Aplicar estilo a la tabla
+        estilo = TableStyleInfo(
+            name="TableStyleLight1",
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=False,
+            showColumnStripes=False
+        )
+        tabla.tableStyleInfo = estilo
+        
+        # Añadir la tabla a la hoja
+        worksheet.add_table(tabla)
+        
+        # Ajustar automáticamente el ancho de las columnas para que se vea todo el texto
+        for i in range(1, num_columnas_totales + 1):
+            column_letter = get_column_letter(i)
+            max_length = 0
+            # Revisar desde fila 1 (títulos) hasta el final de los datos
+            for row in range(1, num_filas_tabla + 2):  # +2 porque los datos empiezan en fila 2
+                cell_value = worksheet.cell(row=row, column=i).value
+                if cell_value:
+                    max_length = max(max_length, len(str(cell_value)))
+            
+            adjusted_width = min(max_length + 2, 50)  # Máximo 50 caracteres de ancho
+            worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+    except Exception as e:
+        # Si hay algún error, no interrumpir el proceso principal
+        print(f"Advertencia: No se pudo crear la tabla para la hoja {sheet_name}: {str(e)}")
 
 def procesar_reporte_antiguedad(archivo_path):
     """Lógica exacta del pipeline.py original con funcionalidad de macro CopiarMora"""
@@ -180,9 +278,9 @@ def procesar_reporte_antiguedad(archivo_path):
         
         with pd.ExcelWriter(ruta_salida, engine='openpyxl') as writer:
             # --- PASO 6.1: Crear hoja "Mora" (replicando macro CopiarMora) ---
-            # Escribir datos sin las columnas temporales de links
+            # Escribir datos sin las columnas temporales de links (empezando en fila 2)
             df_mora_sin_links = df_mora.drop(columns=['link_texto', 'link_url'], errors='ignore')
-            df_mora_sin_links.to_excel(writer, sheet_name='Mora', index=False)
+            df_mora_sin_links.to_excel(writer, sheet_name='Mora', index=False, startrow=1)
             
             # Aplicar formato condicional
             worksheet_mora = writer.sheets['Mora']
@@ -196,21 +294,24 @@ def procesar_reporte_antiguedad(archivo_path):
                     link_col = geo_index + 1  # Columna después de geolocalización
                     
                     # Escribir encabezado
-                    worksheet_mora.cell(row=1, column=link_col, value='Link de Geolocalización')
+                    worksheet_mora.cell(row=2, column=link_col, value='Link de Geolocalización')
                     
                     # Escribir hipervínculos
-                    for idx, row in df_mora.iterrows():
-                        row_num = idx + 2  # +2 porque Excel empieza en 1 y hay encabezado
+                    for i, (idx, row) in enumerate(df_mora.iterrows()):
+                        row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
                         texto = row['link_texto']
                         url = row['link_url']
                         escribir_hipervinculo_excel(worksheet_mora, row_num, link_col, texto, url)
+            
+            # Crear tabla formal de Excel para la hoja Mora
+            crear_tabla_excel(worksheet_mora, df_mora_sin_links, 'Mora')
 
             # --- PASO 6.2: Crear hojas por coordinación ---
             for coord_name, df_coord in coordinaciones_data.items():
                 sheet_name = coord_name.replace(' ', '_')[:31]
-                # Escribir datos sin las columnas temporales de links
+                # Escribir datos sin las columnas temporales de links (empezando en fila 2)
                 df_coord_sin_links = df_coord.drop(columns=['link_texto', 'link_url'], errors='ignore')
-                df_coord_sin_links.to_excel(writer, sheet_name=sheet_name, index=False)
+                df_coord_sin_links.to_excel(writer, sheet_name=sheet_name, index=False, startrow=1)
                 
                 # Aplicar formato condicional
                 worksheet_coord = writer.sheets[sheet_name]
@@ -223,14 +324,17 @@ def procesar_reporte_antiguedad(archivo_path):
                         link_col = geo_index + 1  # Columna después de geolocalización
                         
                         # Escribir encabezado
-                        worksheet_coord.cell(row=1, column=link_col, value='Link de Geolocalización')
+                        worksheet_coord.cell(row=2, column=link_col, value='Link de Geolocalización')
                         
                         # Escribir hipervínculos
-                        for idx, row in df_coord.iterrows():
-                            row_num = idx + 2  # +2 porque Excel empieza en 1 y hay encabezado
+                        for i, (idx, row) in enumerate(df_coord.iterrows()):
+                            row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
                             texto = row['link_texto']
                             url = row['link_url']
                             escribir_hipervinculo_excel(worksheet_coord, row_num, link_col, texto, url)
+                
+                # Crear tabla formal de Excel para la hoja de coordinación
+                crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name)
 
         return ruta_salida, len(coordinaciones_data)
         
