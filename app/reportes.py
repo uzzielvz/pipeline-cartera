@@ -4,6 +4,7 @@ from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Font
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils import get_column_letter
+from openpyxl.styles import numbers
 import os
 import re
 from datetime import datetime
@@ -113,6 +114,45 @@ def escribir_hipervinculo_excel(worksheet, row, col, texto, url):
     cell.value = texto
     cell.hyperlink = url
     cell.font = Font(color="0000FF", underline="single")
+
+def aplicar_formato_final(worksheet, df):
+    """Autoajuste de columnas, formato de moneda y fecha corta."""
+    # a) Autoajuste de columnas
+    for i in range(1, worksheet.max_column + 1):
+        column_letter = get_column_letter(i)
+        max_length = 0
+        for j in range(1, worksheet.max_row + 1):
+            value = worksheet.cell(row=j, column=i).value
+            if value is not None:
+                max_length = max(max_length, len(str(value)))
+        worksheet.column_dimensions[column_letter].width = min(max_length + 2, 50)
+
+    # b) Formato de moneda en columnas conocidas del df
+    columnas_moneda = [
+        col for col in df.columns
+        if any(key in col.lower() for key in ['monto', 'saldo', 'importe', 'cantidad', 'pago'])
+    ]
+    for col_name in columnas_moneda:
+        if col_name in df.columns:
+            # Buscar índice de la columna por encabezado (fila 2)
+            for cell in worksheet[2]:
+                if cell.value == col_name:
+                    col_idx = cell.column
+                    # Aplicar formato desde fila 3 (datos)
+                    for row in range(3, worksheet.max_row + 1):
+                        worksheet.cell(row=row, column=col_idx).number_format = "$#,##0.00"
+                    break
+
+    # c) Formato de fecha corta para columnas datetime del df
+    columnas_fecha = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns.tolist()
+    for col_name in columnas_fecha:
+        # Ubicar columna
+        for cell in worksheet[2]:
+            if cell.value == col_name:
+                col_idx = cell.column
+                for row in range(3, worksheet.max_row + 1):
+                    worksheet.cell(row=row, column=col_idx).number_format = "DD/MM/YYYY"
+                break
 
 def aplicar_formato_condicional(worksheet, columna_mora, num_filas):
     """Aplica formato condicional de colores a la columna de días de mora"""
@@ -232,7 +272,16 @@ def procesar_reporte_antiguedad(archivo_path):
         columna_mora = 'Días de mora'
         columna_coordinacion = 'Coordinación'
         columna_geolocalizacion = 'Geolocalización domicilio'
+        # Estandarizar códigos a 6 dígitos (texto con ceros a la izquierda)
         df[columna_codigo] = pd.to_numeric(df[columna_codigo], errors='coerce').fillna(0).astype(int).astype(str).str.zfill(6)
+        for col_codigo in ['Código promotor', 'Código recuperador']:
+            if col_codigo in df.columns:
+                df[col_codigo] = pd.to_numeric(df[col_codigo], errors='coerce').fillna(0).astype(int).astype(str).str.zfill(6)
+
+        # Manejo de datos faltantes: teléfonos como strings vacíos
+        for col in df.columns:
+            if 'Teléfono' in col:
+                df[col] = df[col].fillna('').astype(str)
         
         # --- PASO 1.1: Procesar geolocalización ---
         if columna_geolocalizacion in df.columns:
@@ -240,6 +289,11 @@ def procesar_reporte_antiguedad(archivo_path):
             geolocalizacion_data = df[columna_geolocalizacion].apply(generar_link_google_maps)
             df['link_texto'] = [item[0] for item in geolocalizacion_data]
             df['link_url'] = [item[1] for item in geolocalizacion_data]
+
+        # --- PASO 1.2: Crear Informe Completo (antes de filtrar) ---
+        # Ordenar por días de mora (incluye clientes con 0 días)
+        df_completo = df.sort_values(by=columna_mora, ascending=False).copy()
+        df_completo_sin_links = df_completo.drop(columns=['link_texto', 'link_url'], errors='ignore')
 
         # --- PASO 2: Filtrar ---
         df_filtrado = df[~df[columna_codigo].isin(LISTA_FRAUDE)]
@@ -277,6 +331,13 @@ def procesar_reporte_antiguedad(archivo_path):
         ruta_salida = os.path.join('uploads', nombre_archivo_salida)
         
         with pd.ExcelWriter(ruta_salida, engine='openpyxl') as writer:
+            # --- Hoja 0: Informe completo ---
+            hoja_informe = fecha_actual
+            df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, index=False, startrow=1)
+            ws_informe = writer.sheets[hoja_informe]
+            # Crear tabla y aplicar formato final
+            crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe)
+            aplicar_formato_final(ws_informe, df_completo_sin_links)
             # --- PASO 6.1: Crear hoja "Mora" (replicando macro CopiarMora) ---
             # Escribir datos sin las columnas temporales de links (empezando en fila 2)
             df_mora_sin_links = df_mora.drop(columns=['link_texto', 'link_url'], errors='ignore')
@@ -303,8 +364,9 @@ def procesar_reporte_antiguedad(archivo_path):
                         url = row['link_url']
                         escribir_hipervinculo_excel(worksheet_mora, row_num, link_col, texto, url)
             
-            # Crear tabla formal de Excel para la hoja Mora
+            # Crear tabla formal de Excel para la hoja Mora y formato final
             crear_tabla_excel(worksheet_mora, df_mora_sin_links, 'Mora')
+            aplicar_formato_final(worksheet_mora, df_mora_sin_links)
 
             # --- PASO 6.2: Crear hojas por coordinación ---
             for coord_name, df_coord in coordinaciones_data.items():
@@ -333,8 +395,9 @@ def procesar_reporte_antiguedad(archivo_path):
                             url = row['link_url']
                             escribir_hipervinculo_excel(worksheet_coord, row_num, link_col, texto, url)
                 
-                # Crear tabla formal de Excel para la hoja de coordinación
+                # Crear tabla formal de Excel para la hoja de coordinación y formato final
                 crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name)
+                aplicar_formato_final(worksheet_coord, df_coord_sin_links)
 
         return ruta_salida, len(coordinaciones_data)
         
