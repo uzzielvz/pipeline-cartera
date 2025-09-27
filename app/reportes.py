@@ -66,6 +66,7 @@ def add_geolocation_links(df, geolocation_column):
         df['link_url'] = [item[1] for item in geolocalizacion_data]
     return df
 
+
 def add_par_column(df, mora_column):
     """Añade columna PAR y la posiciona correctamente"""
     df = df.copy()  # Crear copia para evitar SettingWithCopyWarning
@@ -463,8 +464,25 @@ def procesar_reporte_antiguedad(archivo_path):
         logger.info(f"🔍 df_completo ANTES de add_par_column: {[col for col in df_completo.columns if 'par' in str(col).lower()]}")
         df_completo = add_par_column(df_completo, columna_mora)
         
+        # Insertar columna 'Link de Geolocalización' después de 'Geolocalización domicilio' si existen los links
+        if 'link_texto' in df_completo.columns and columna_geolocalizacion in df_completo.columns:
+            geo_index = df_completo.columns.get_loc(columna_geolocalizacion)
+            df_completo.insert(geo_index + 1, 'Link de Geolocalización', df_completo['link_texto'])
+            logger.info(f"📍 Insertada columna 'Link de Geolocalización' en df_completo después de '{columna_geolocalizacion}'")
         
+        # Crear DataFrame sin las columnas temporales de links para escritura en Excel
         df_completo_sin_links = df_completo.drop(columns=['link_texto', 'link_url'], errors='ignore')
+        
+        # Reordenar columnas para que 'Código acreditado' sea la primera (solo en reporte completo)
+        if 'Código acreditado' in df_completo_sin_links.columns:
+            columnas = df_completo_sin_links.columns.tolist()
+            # Remover 'Código acreditado' de su posición actual
+            columnas.remove('Código acreditado')
+            # Insertar 'Código acreditado' al inicio
+            columnas.insert(0, 'Código acreditado')
+            # Reordenar el DataFrame
+            df_completo_sin_links = df_completo_sin_links[columnas]
+            logger.info(f"📋 Reordenadas columnas en reporte completo: 'Código acreditado' es la primera columna")
         
         # DIAGNÓSTICO: Verificar si hay columnas duplicadas
         columnas_duplicadas = df_completo_sin_links.columns[df_completo_sin_links.columns.duplicated()].tolist()
@@ -499,13 +517,27 @@ def procesar_reporte_antiguedad(archivo_path):
         df_mora = df_ordenado[df_ordenado[columna_mora] >= 1].copy()
         logger.info(f"Registros en mora: {len(df_mora)}")
         
+        # Insertar columna 'Link de Geolocalización' después de 'Geolocalización domicilio' si existen los links
+        if 'link_texto' in df_mora.columns and columna_geolocalizacion in df_mora.columns:
+            geo_index = df_mora.columns.get_loc(columna_geolocalizacion)
+            df_mora.insert(geo_index + 1, 'Link de Geolocalización', df_mora['link_texto'])
+            logger.info(f"📍 Insertada columna 'Link de Geolocalización' en df_mora después de '{columna_geolocalizacion}'")
+        
 
         # --- PASO 5: Distribuir ---
         coordinaciones_data = {}
         lista_coordinaciones = df_ordenado[columna_coordinacion].unique()
         for coord in lista_coordinaciones:
             if pd.notna(coord):
-                coordinaciones_data[coord] = df_ordenado[df_ordenado[columna_coordinacion] == coord].copy()
+                df_coord = df_ordenado[df_ordenado[columna_coordinacion] == coord].copy()
+                
+                # Insertar columna 'Link de Geolocalización' después de 'Geolocalización domicilio' si existen los links
+                if 'link_texto' in df_coord.columns and columna_geolocalizacion in df_coord.columns:
+                    geo_index = df_coord.columns.get_loc(columna_geolocalizacion)
+                    df_coord.insert(geo_index + 1, 'Link de Geolocalización', df_coord['link_texto'])
+                    logger.info(f"📍 Insertada columna 'Link de Geolocalización' en coordinación '{coord}' después de '{columna_geolocalizacion}'")
+                
+                coordinaciones_data[coord] = df_coord
                 
 
         # --- PASO 6: Generar el archivo Excel final ---
@@ -530,28 +562,24 @@ def procesar_reporte_antiguedad(archivo_path):
             # Aplicar formato condicional a la hoja de informe completo
             aplicar_formato_condicional(ws_informe, columna_mora, len(df_completo))
             
-            # Añadir hipervínculos si existe geolocalización en informe completo
-            if 'link_texto' in df_completo.columns and columna_geolocalizacion in df_completo.columns:
-                geo_index = df_completo.columns.get_loc(columna_geolocalizacion)
-                link_col = geo_index + 1  # Columna después de geolocalización
+            # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
+            if 'Link de Geolocalización' in df_completo_sin_links.columns:
+                link_col = df_completo_sin_links.columns.get_loc('Link de Geolocalización') + 1  # +1 porque Excel es 1-indexado
                 
-                # Escribir encabezado
-                ws_informe.cell(row=2, column=link_col, value='Link de Geolocalización')
-                
-                # Escribir hipervínculos
+                # Escribir hipervínculos usando los datos originales de df_completo
                 for i, (idx, row) in enumerate(df_completo.iterrows()):
                     row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
-                    texto = row['link_texto']
-                    url = row['link_url']
-                    escribir_hipervinculo_excel(ws_informe, row_num, link_col, texto, url)
+                    if 'link_texto' in df_completo.columns and 'link_url' in df_completo.columns:
+                        texto = row['link_texto']
+                        url = row['link_url']
+                        escribir_hipervinculo_excel(ws_informe, row_num, link_col, texto, url)
             
             # Crear tabla y aplicar formato final
             crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe)
             aplicar_formato_final(ws_informe, df_completo_sin_links, es_hoja_mora=False)
             # --- PASO 6.1: Crear hoja "Mora" ---
-            # Escribir datos (empezando en fila 2)
+            # Crear DataFrame sin las columnas temporales de links para escritura en Excel
             df_mora_sin_links = df_mora.drop(columns=['link_texto', 'link_url'], errors='ignore')
-            
             
             df_mora_sin_links.to_excel(writer, sheet_name='Mora', index=False, startrow=1)
             
@@ -559,20 +587,17 @@ def procesar_reporte_antiguedad(archivo_path):
             worksheet_mora = writer.sheets['Mora']
             aplicar_formato_condicional(worksheet_mora, columna_mora, len(df_mora))
             
-            # Añadir hipervínculos si existe geolocalización
-            if 'link_texto' in df_mora.columns and columna_geolocalizacion in df_mora.columns:
-                geo_index = df_mora.columns.get_loc(columna_geolocalizacion)
-                link_col = geo_index + 1  # Columna después de geolocalización
+            # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
+            if 'Link de Geolocalización' in df_mora_sin_links.columns:
+                link_col = df_mora_sin_links.columns.get_loc('Link de Geolocalización') + 1  # +1 porque Excel es 1-indexado
                 
-                # Escribir encabezado
-                worksheet_mora.cell(row=2, column=link_col, value='Link de Geolocalización')
-                
-                # Escribir hipervínculos
+                # Escribir hipervínculos usando los datos originales de df_mora
                 for i, (idx, row) in enumerate(df_mora.iterrows()):
                     row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
-                    texto = row['link_texto']
-                    url = row['link_url']
-                    escribir_hipervinculo_excel(worksheet_mora, row_num, link_col, texto, url)
+                    if 'link_texto' in df_mora.columns and 'link_url' in df_mora.columns:
+                        texto = row['link_texto']
+                        url = row['link_url']
+                        escribir_hipervinculo_excel(worksheet_mora, row_num, link_col, texto, url)
             
             # Crear tabla formal de Excel para la hoja Mora y formato final
             crear_tabla_excel(worksheet_mora, df_mora_sin_links, 'Mora')
@@ -581,9 +606,8 @@ def procesar_reporte_antiguedad(archivo_path):
             # --- PASO 6.2: Crear hojas por coordinación ---
             for coord_name, df_coord in coordinaciones_data.items():
                 sheet_name = coord_name.replace(' ', '_')[:31]
-                # Escribir datos (empezando en fila 2)
+                # Crear DataFrame sin las columnas temporales de links para escritura en Excel
                 df_coord_sin_links = df_coord.drop(columns=['link_texto', 'link_url'], errors='ignore')
-                
                 
                 df_coord_sin_links.to_excel(writer, sheet_name=sheet_name, index=False, startrow=1)
                 
@@ -591,20 +615,17 @@ def procesar_reporte_antiguedad(archivo_path):
                 worksheet_coord = writer.sheets[sheet_name]
                 aplicar_formato_condicional(worksheet_coord, columna_mora, len(df_coord))
                 
-                # Añadir hipervínculos si existe geolocalización
-                if 'link_texto' in df_coord.columns and columna_geolocalizacion in df_coord.columns:
-                    geo_index = df_coord.columns.get_loc(columna_geolocalizacion)
-                    link_col = geo_index + 1  # Columna después de geolocalización
+                # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
+                if 'Link de Geolocalización' in df_coord_sin_links.columns:
+                    link_col = df_coord_sin_links.columns.get_loc('Link de Geolocalización') + 1  # +1 porque Excel es 1-indexado
                     
-                    # Escribir encabezado
-                    worksheet_coord.cell(row=2, column=link_col, value='Link de Geolocalización')
-                    
-                    # Escribir hipervínculos
+                    # Escribir hipervínculos usando los datos originales de df_coord
                     for i, (idx, row) in enumerate(df_coord.iterrows()):
                         row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
-                        texto = row['link_texto']
-                        url = row['link_url']
-                        escribir_hipervinculo_excel(worksheet_coord, row_num, link_col, texto, url)
+                        if 'link_texto' in df_coord.columns and 'link_url' in df_coord.columns:
+                            texto = row['link_texto']
+                            url = row['link_url']
+                            escribir_hipervinculo_excel(worksheet_coord, row_num, link_col, texto, url)
 
                 # Crear tabla formal de Excel para la hoja de coordinación y formato final
                 crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name)
