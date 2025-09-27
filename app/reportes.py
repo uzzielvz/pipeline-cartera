@@ -51,6 +51,7 @@ def standardize_codes(df, code_columns):
 
 def clean_phone_numbers(df):
     """Limpia y estandariza números de teléfono"""
+    df = df.copy()  # Crear copia para evitar SettingWithCopyWarning
     for col in df.columns:
         if 'Teléfono' in col:
             df[col] = df[col].fillna('').astype(str)
@@ -58,6 +59,7 @@ def clean_phone_numbers(df):
 
 def add_geolocation_links(df, geolocation_column):
     """Añade columnas de enlaces de geolocalización al DataFrame"""
+    df = df.copy()  # Crear copia para evitar SettingWithCopyWarning
     if geolocation_column in df.columns:
         geolocalizacion_data = df[geolocation_column].apply(generar_link_google_maps)
         df['link_texto'] = [item[0] for item in geolocalizacion_data]
@@ -66,7 +68,23 @@ def add_geolocation_links(df, geolocation_column):
 
 def add_par_column(df, mora_column):
     """Añade columna PAR y la posiciona correctamente"""
+    df = df.copy()  # Crear copia para evitar SettingWithCopyWarning
+    
+    # Solo eliminar columnas que sean exactamente "PAR" o variantes exactas de "PAR 2"
+    columnas_par_exactas = []
+    for col in df.columns:
+        col_str = str(col).strip().lower()
+        # Solo eliminar si es exactamente "par" o variantes de "par 2"
+        if col_str == 'par' or col_str in ['par 2', 'par2', 'par  2', 'par   2', 'par-2', 'par_2', 'par.2']:
+            columnas_par_exactas.append(col)
+    
+    if columnas_par_exactas:
+        logger.warning(f"⚠️ ELIMINANDO columnas PAR exactas: {columnas_par_exactas}")
+        df = df.drop(columns=columnas_par_exactas, errors='ignore')
+    
+    # Crear la columna PAR
     df['PAR'] = df[mora_column].apply(asignar_rango_mora)
+    logger.info(f"✅ PAR creado")
     
     # Reordenar columnas para que 'PAR' esté al lado de 'Días de mora'
     columnas = df.columns.tolist()
@@ -118,6 +136,7 @@ def generate_valid_table_name(sheet_name):
         clean_name = clean_name[:255]
     
     return clean_name
+
 
 def generar_link_google_maps(geolocalizacion):
     """
@@ -393,10 +412,6 @@ def procesar_reporte_antiguedad(archivo_path):
         df = pd.read_excel(archivo_path, engine='openpyxl', dtype=DTYPE_CONFIG)
         df = clean_dataframe_columns(df)
         
-        # Verificación de integridad de datos - ANTES de transformaciones
-        medio_comunic_1_antes = df['Medio comunic. 1'].notna().sum() if 'Medio comunic. 1' in df.columns else 0
-        medio_comunic_2_antes = df['Medio comunic. 2'].notna().sum() if 'Medio comunic. 2' in df.columns else 0
-        logger.info(f"Verificación de integridad - ANTES: 'Medio comunic. 1' -> {medio_comunic_1_antes}, 'Medio comunic. 2' -> {medio_comunic_2_antes}")
         
         # Obtener nombres de columnas desde configuración
         columna_codigo = COLUMN_MAPPING['codigo']
@@ -409,43 +424,63 @@ def procesar_reporte_antiguedad(archivo_path):
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             raise ValueError(f"Columnas requeridas no encontradas: {missing_columns}")
-        # --- PASO 1.1: Limpieza de datos ---
-        # Estandarizar códigos a 6 dígitos
+        
+        # --- PASO 1.1: Estandarizar códigos ANTES del filtrado ---
+        # Estandarizar códigos a 6 dígitos para asegurar comparación correcta
         code_columns = [columna_codigo, 'Código promotor', 'Código recuperador']
         df = standardize_codes(df, code_columns)
         
+        # --- PASO 2: Filtrar fraudes INMEDIATAMENTE después de la limpieza ---
+        logger.info(f"Filtrando {len(LISTA_FRAUDE)} códigos de fraude")
+        registros_antes_filtrado = len(df)
+        df_filtrado = df[~df[columna_codigo].isin(LISTA_FRAUDE)]
+        registros_eliminados = registros_antes_filtrado - len(df_filtrado)
+        logger.info(f"Se eliminaron {registros_eliminados} registros por códigos fraudulentos")
+        
+        
+        # Verificación de integridad de datos - ANTES de transformaciones (sobre datos filtrados)
+        medio_comunic_1_antes = df_filtrado['Medio comunic. 1'].notna().sum() if 'Medio comunic. 1' in df_filtrado.columns else 0
+        medio_comunic_2_antes = df_filtrado['Medio comunic. 2'].notna().sum() if 'Medio comunic. 2' in df_filtrado.columns else 0
+        logger.info(f"Verificación de integridad - ANTES: 'Medio comunic. 1' -> {medio_comunic_1_antes}, 'Medio comunic. 2' -> {medio_comunic_2_antes}")
+        
+        # --- PASO 1.2: Limpieza de datos sobre DataFrame filtrado ---
         # Limpiar números de teléfono
-        df = clean_phone_numbers(df)
+        df_filtrado = clean_phone_numbers(df_filtrado)
         
         # Añadir enlaces de geolocalización
-        df = add_geolocation_links(df, columna_geolocalizacion)
+        df_filtrado = add_geolocation_links(df_filtrado, columna_geolocalizacion)
+        
+        # DIAGNÓSTICO: Verificar columnas PAR en df_filtrado
+        columnas_par_filtrado = [col for col in df_filtrado.columns if 'par' in str(col).lower()]
+        if columnas_par_filtrado:
+            logger.warning(f"🚨 PROBLEMA: df_filtrado tiene columnas PAR: {columnas_par_filtrado}")
+        else:
+            logger.info(f"✅ df_filtrado NO tiene columnas PAR")
 
-        # --- PASO 1.2: Crear Informe Completo (antes de filtrar) ---
-        logger.info("Creando informe completo con todos los registros")
-        df_completo = df.sort_values(by=columna_mora, ascending=False).copy()
+        # --- PASO 1.3: Crear Informe Completo (después del filtrado) ---
+        logger.info("Creando informe completo con registros filtrados")
+        df_completo = df_filtrado.sort_values(by=columna_mora, ascending=False).copy()
+        logger.info(f"🔍 df_completo ANTES de add_par_column: {[col for col in df_completo.columns if 'par' in str(col).lower()]}")
         df_completo = add_par_column(df_completo, columna_mora)
         
-        # Eliminar columna "PAR 2" duplicada si existe en informe completo
-        if 'PAR 2' in df_completo.columns:
-            df_completo = df_completo.drop(columns=['PAR 2'], errors='ignore')
-            logger.info("Columna 'PAR 2' duplicada eliminada del informe completo")
         
         df_completo_sin_links = df_completo.drop(columns=['link_texto', 'link_url'], errors='ignore')
+        
+        # DIAGNÓSTICO: Verificar si hay columnas duplicadas
+        columnas_duplicadas = df_completo_sin_links.columns[df_completo_sin_links.columns.duplicated()].tolist()
+        if columnas_duplicadas:
+            logger.error(f"🚨 COLUMNAS DUPLICADAS encontradas: {columnas_duplicadas}")
+            # Eliminar columnas duplicadas
+            df_completo_sin_links = df_completo_sin_links.loc[:, ~df_completo_sin_links.columns.duplicated()]
+            logger.info(f"🗑️ Columnas duplicadas eliminadas")
 
-        # --- PASO 2: Filtrar fraudes ---
-        logger.info(f"Filtrando {len(LISTA_FRAUDE)} códigos de fraude")
-        df_filtrado = df[~df[columna_codigo].isin(LISTA_FRAUDE)]
-
-        # --- PASO 3: Ordenar y añadir columnas calculadas ---
-        df_ordenado = df_filtrado.sort_values(by=columna_mora, ascending=False)
+        # --- PASO 3: Ordenar y añadir columnas calculadas (sobre datos filtrados) ---
+        df_ordenado = df_filtrado.sort_values(by=columna_mora, ascending=False).copy()
+        logger.info(f"🔍 df_ordenado ANTES de add_par_column: {[col for col in df_ordenado.columns if 'par' in str(col).lower()]}")
         df_ordenado = add_par_column(df_ordenado, columna_mora)
         
-        # Eliminar columna "PAR 2" duplicada si existe
-        if 'PAR 2' in df_ordenado.columns:
-            df_ordenado = df_ordenado.drop(columns=['PAR 2'], errors='ignore')
-            logger.info("Columna 'PAR 2' duplicada eliminada")
         
-        # Verificación de integridad de datos - DESPUÉS de transformaciones
+        # Verificación de integridad de datos - DESPUÉS de transformaciones (sobre datos filtrados)
         medio_comunic_1_despues = df_ordenado['Medio comunic. 1'].notna().sum() if 'Medio comunic. 1' in df_ordenado.columns else 0
         medio_comunic_2_despues = df_ordenado['Medio comunic. 2'].notna().sum() if 'Medio comunic. 2' in df_ordenado.columns else 0
         
@@ -463,6 +498,7 @@ def procesar_reporte_antiguedad(archivo_path):
         # --- PASO 4: Crear DataFrame de Mora ---
         df_mora = df_ordenado[df_ordenado[columna_mora] >= 1].copy()
         logger.info(f"Registros en mora: {len(df_mora)}")
+        
 
         # --- PASO 5: Distribuir ---
         coordinaciones_data = {}
@@ -470,6 +506,7 @@ def procesar_reporte_antiguedad(archivo_path):
         for coord in lista_coordinaciones:
             if pd.notna(coord):
                 coordinaciones_data[coord] = df_ordenado[df_ordenado[columna_coordinacion] == coord].copy()
+                
 
         # --- PASO 6: Generar el archivo Excel final ---
         fecha_actual = datetime.now().strftime("%d%m%Y")
@@ -479,6 +516,15 @@ def procesar_reporte_antiguedad(archivo_path):
         with pd.ExcelWriter(ruta_salida, engine='openpyxl') as writer:
             # --- Hoja 0: Informe completo ---
             hoja_informe = fecha_actual
+            
+            
+            # DIAGNÓSTICO FINAL: Verificar columnas antes de escribir
+            columnas_finales = [col for col in df_completo_sin_links.columns if 'par' in str(col).lower()]
+            if columnas_finales:
+                logger.error(f"🚨 ERROR CRÍTICO: Columnas PAR en Informe Completo FINAL: {columnas_finales}")
+            else:
+                logger.info(f"✅ Informe Completo FINAL sin columnas PAR")
+            
             df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, index=False, startrow=1)
             ws_informe = writer.sheets[hoja_informe]
             # Aplicar formato condicional a la hoja de informe completo
@@ -505,6 +551,8 @@ def procesar_reporte_antiguedad(archivo_path):
             # --- PASO 6.1: Crear hoja "Mora" ---
             # Escribir datos (empezando en fila 2)
             df_mora_sin_links = df_mora.drop(columns=['link_texto', 'link_url'], errors='ignore')
+            
+            
             df_mora_sin_links.to_excel(writer, sheet_name='Mora', index=False, startrow=1)
             
             # Aplicar formato condicional
@@ -535,6 +583,8 @@ def procesar_reporte_antiguedad(archivo_path):
                 sheet_name = coord_name.replace(' ', '_')[:31]
                 # Escribir datos (empezando en fila 2)
                 df_coord_sin_links = df_coord.drop(columns=['link_texto', 'link_url'], errors='ignore')
+                
+                
                 df_coord_sin_links.to_excel(writer, sheet_name=sheet_name, index=False, startrow=1)
                 
                 # Aplicar formato condicional
