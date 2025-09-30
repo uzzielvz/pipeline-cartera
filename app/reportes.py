@@ -197,16 +197,17 @@ def asignar_rango_mora(dias_mora):
     Asigna valor PAR (Período de Antigüedad de Recuperación) basado en días de mora.
     
     Reglas de categorización:
+    - 0 días o sin mora: '0'
     - 1-7 días: '7'
     - 8-15 días: '15' 
     - 16-30 días: '30'
     - 31-60 días: '60'
     - 61-90 días: '90'
     - >90 días: '>90'
-    - Otros casos: 'N/A'
     """
+    # Cambio: Asignar '0' en lugar de 'N/A' para casos nulos, negativos o menores a 1
     if pd.isna(dias_mora) or dias_mora < 1:
-        return 'N/A'
+        return '0'
     elif 1 <= dias_mora <= 7:
         return '7'
     elif 8 <= dias_mora <= 15:
@@ -220,7 +221,7 @@ def asignar_rango_mora(dias_mora):
     elif dias_mora > 90:
         return '>90'
     else:
-        return 'N/A'
+        return '0'  # Cambio: '0' en lugar de 'N/A' para cualquier otro caso
 
 def escribir_hipervinculo_excel(worksheet, row, col, texto, url):
     """Escribe un hipervínculo en una celda de Excel"""
@@ -517,6 +518,10 @@ def procesar_reporte_antiguedad(archivo_path):
         df_mora = df_ordenado[df_ordenado[columna_mora] >= 1].copy()
         logger.info(f"Registros en mora: {len(df_mora)}")
         
+        # Aplicar add_par_column a df_mora para eliminar columnas duplicadas y regenerar 'PAR'
+        logger.info(f"🔍 df_mora ANTES de add_par_column: {[col for col in df_mora.columns if 'par' in str(col).lower()]}")
+        df_mora = add_par_column(df_mora, columna_mora)
+        
         # Insertar columna 'Link de Geolocalización' después de 'Geolocalización domicilio' si existen los links
         if 'link_texto' in df_mora.columns and columna_geolocalizacion in df_mora.columns:
             geo_index = df_mora.columns.get_loc(columna_geolocalizacion)
@@ -530,6 +535,10 @@ def procesar_reporte_antiguedad(archivo_path):
         for coord in lista_coordinaciones:
             if pd.notna(coord):
                 df_coord = df_ordenado[df_ordenado[columna_coordinacion] == coord].copy()
+                
+                # Aplicar add_par_column a df_coord para eliminar columnas duplicadas y regenerar 'PAR'
+                logger.info(f"🔍 df_coord '{coord}' ANTES de add_par_column: {[col for col in df_coord.columns if 'par' in str(col).lower()]}")
+                df_coord = add_par_column(df_coord, columna_mora)
                 
                 # Insertar columna 'Link de Geolocalización' después de 'Geolocalización domicilio' si existen los links
                 if 'link_texto' in df_coord.columns and columna_geolocalizacion in df_coord.columns:
@@ -578,6 +587,21 @@ def procesar_reporte_antiguedad(archivo_path):
             crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe)
             aplicar_formato_final(ws_informe, df_completo_sin_links, es_hoja_mora=False)
             # --- PASO 6.1: Crear hoja "Mora" ---
+            # Verificar columnas duplicadas antes de escribir hoja Mora
+            columnas_duplicadas_mora = df_mora.columns[df_mora.columns.duplicated()].tolist()
+            if columnas_duplicadas_mora:
+                logger.error(f"🚨 COLUMNAS DUPLICADAS encontradas en df_mora: {columnas_duplicadas_mora}")
+                # Eliminar columnas duplicadas
+                df_mora = df_mora.loc[:, ~df_mora.columns.duplicated()]
+                logger.info(f"🗑️ Columnas duplicadas eliminadas de df_mora")
+            
+            # DIAGNÓSTICO FINAL: Verificar columnas PAR en df_mora
+            columnas_par_mora = [col for col in df_mora.columns if 'par' in str(col).lower()]
+            if columnas_par_mora:
+                logger.error(f"🚨 ERROR CRÍTICO: Columnas PAR en Mora FINAL: {columnas_par_mora}")
+            else:
+                logger.info(f"✅ Mora FINAL sin columnas PAR")
+            
             # Crear DataFrame sin las columnas temporales de links para escritura en Excel
             df_mora_sin_links = df_mora.drop(columns=['link_texto', 'link_url'], errors='ignore')
             
@@ -606,6 +630,22 @@ def procesar_reporte_antiguedad(archivo_path):
             # --- PASO 6.2: Crear hojas por coordinación ---
             for coord_name, df_coord in coordinaciones_data.items():
                 sheet_name = coord_name.replace(' ', '_')[:31]
+                
+                # Verificar columnas duplicadas antes de escribir hoja de coordinación
+                columnas_duplicadas_coord = df_coord.columns[df_coord.columns.duplicated()].tolist()
+                if columnas_duplicadas_coord:
+                    logger.error(f"🚨 COLUMNAS DUPLICADAS encontradas en df_coord '{coord_name}': {columnas_duplicadas_coord}")
+                    # Eliminar columnas duplicadas
+                    df_coord = df_coord.loc[:, ~df_coord.columns.duplicated()]
+                    logger.info(f"🗑️ Columnas duplicadas eliminadas de df_coord '{coord_name}'")
+                
+                # DIAGNÓSTICO FINAL: Verificar columnas PAR en df_coord
+                columnas_par_coord = [col for col in df_coord.columns if 'par' in str(col).lower()]
+                if columnas_par_coord:
+                    logger.error(f"🚨 ERROR CRÍTICO: Columnas PAR en coordinación '{coord_name}' FINAL: {columnas_par_coord}")
+                else:
+                    logger.info(f"✅ Coordinación '{coord_name}' FINAL sin columnas PAR")
+                
                 # Crear DataFrame sin las columnas temporales de links para escritura en Excel
                 df_coord_sin_links = df_coord.drop(columns=['link_texto', 'link_url'], errors='ignore')
                 
