@@ -12,7 +12,8 @@ COLUMN_MAPPING = {
     'codigo': 'Código acreditado',
     'mora': 'Días de mora',
     'coordinacion': 'Coordinación',
-    'geolocalizacion': 'Geolocalización domicilio'
+    'geolocalizacion': 'Geolocalización domicilio',
+    'saldo_vencido': 'Saldo vencido'
 }
 
 # Configuración de tipos de datos para prevenir pérdida de datos

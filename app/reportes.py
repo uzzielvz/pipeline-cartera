@@ -308,19 +308,24 @@ def aplicar_formato_condicional(worksheet, columna_mora, num_filas):
     # Aplicar formato desde fila 3 (datos) hasta el final
     worksheet.conditional_formatting.add(f'{mora_col_letter}3:{mora_col_letter}{num_filas + 2}', color_scale_rule)
 
-def crear_tabla_excel(worksheet, df, sheet_name):
+def crear_tabla_excel(worksheet, df, sheet_name, incluir_columnas_adicionales=False):
     """
-    Convierte un rango de datos en una tabla formal de Excel con 10 columnas adicionales y títulos combinados.
+    Convierte un rango de datos en una tabla formal de Excel.
     
-    Estructura:
+    Si incluir_columnas_adicionales=True (solo para hoja Mora):
     - Fila 1: Títulos superiores combinados y coloreados
-    - Fila 2: Encabezados de la tabla (datos + 10 en blanco)
+    - Fila 2: Encabezados de la tabla (datos + 9 columnas adicionales)
+    - Fila 3+: Datos de la tabla
+    
+    Si incluir_columnas_adicionales=False (otras hojas):
+    - Fila 2: Encabezados de la tabla (solo datos del DataFrame)
     - Fila 3+: Datos de la tabla
     
     Args:
         worksheet: El objeto de la hoja de Excel
         df: El DataFrame correspondiente con los datos
         sheet_name: El nombre de la hoja para crear un nombre único de tabla
+        incluir_columnas_adicionales: Si True, incluye 9 columnas adicionales con títulos (solo para Mora)
     """
     try:
         from openpyxl.styles import PatternFill, Alignment
@@ -329,44 +334,49 @@ def crear_tabla_excel(worksheet, df, sheet_name):
         num_filas_datos = len(df)  # Número de filas de datos
         num_filas_tabla = num_filas_datos + 1  # +1 para incluir el encabezado
         num_columnas_originales = len(df.columns)
-        num_columnas_totales = num_columnas_originales + 9  # +9 columnas adicionales
         
         # Obtener las letras de las columnas
         col_inicio = get_column_letter(1)  # Columna A
         col_fin_original = get_column_letter(num_columnas_originales)  # Última columna de datos
-        col_fin_total = get_column_letter(num_columnas_totales)  # Última columna incluyendo las 9 adicionales
         
-        # --- PASO 1: Crear títulos combinados con colores en la FILA 1 ---
-        # Título 1 (Verde): "Seguimiento Call Center" - primeras 4 columnas adicionales
-        titulo1_inicio = get_column_letter(num_columnas_originales + 1)
-        titulo1_fin = get_column_letter(num_columnas_originales + ADDITIONAL_COLUMNS['titles']['green']['columns'])
-        rango_titulo1 = f"{titulo1_inicio}1:{titulo1_fin}1"
-        worksheet.merge_cells(rango_titulo1)
-        
-        celda_titulo1 = worksheet[f"{titulo1_inicio}1"]
-        celda_titulo1.value = ADDITIONAL_COLUMNS['titles']['green']['text']
-        celda_titulo1.fill = PatternFill(start_color=COLORS['green'], end_color=COLORS['green'], fill_type="solid")
-        celda_titulo1.alignment = Alignment(horizontal="center", vertical="center")
-        
-        # Título 2 (Azul): "Gestión de Cobranza en Campo" - siguientes 5 columnas adicionales
-        titulo2_inicio = get_column_letter(num_columnas_originales + ADDITIONAL_COLUMNS['titles']['green']['columns'] + 1)
-        titulo2_fin = get_column_letter(num_columnas_originales + ADDITIONAL_COLUMNS['count'])
-        rango_titulo2 = f"{titulo2_inicio}1:{titulo2_fin}1"
-        worksheet.merge_cells(rango_titulo2)
-        
-        celda_titulo2 = worksheet[f"{titulo2_inicio}1"]
-        celda_titulo2.value = ADDITIONAL_COLUMNS['titles']['blue']['text']
-        celda_titulo2.fill = PatternFill(start_color=COLORS['blue'], end_color=COLORS['blue'], fill_type="solid")
-        celda_titulo2.alignment = Alignment(horizontal="center", vertical="center")
-        
-        # --- PASO 2: Agregar encabezados específicos en la FILA 2 ---
-        for i, encabezado in enumerate(ADDITIONAL_COLUMNS['headers']):
-            col_letra = get_column_letter(num_columnas_originales + 1 + i)
-            worksheet.cell(row=2, column=num_columnas_originales + 1 + i, value=encabezado)
-        
-        # --- PASO 3: Crear la tabla con el rango correcto (empezando en FILA 2) ---
-        # Crear el rango de la tabla incluyendo las 9 columnas adicionales, empezando en fila 2
-        rango_tabla = f"{col_inicio}2:{col_fin_total}{num_filas_tabla + 1}"  # +1 porque startrow=1 mueve todo una fila
+        if incluir_columnas_adicionales:
+            # Lógica para hoja Mora: incluir 9 columnas adicionales
+            num_columnas_totales = num_columnas_originales + 9  # +9 columnas adicionales
+            col_fin_total = get_column_letter(num_columnas_totales)  # Última columna incluyendo las 9 adicionales
+            
+            # --- PASO 1: Crear títulos combinados con colores en la FILA 1 ---
+            # Título 1 (Verde): "Seguimiento Call Center" - primeras 4 columnas adicionales
+            titulo1_inicio = get_column_letter(num_columnas_originales + 1)
+            titulo1_fin = get_column_letter(num_columnas_originales + ADDITIONAL_COLUMNS['titles']['green']['columns'])
+            rango_titulo1 = f"{titulo1_inicio}1:{titulo1_fin}1"
+            worksheet.merge_cells(rango_titulo1)
+            
+            celda_titulo1 = worksheet[f"{titulo1_inicio}1"]
+            celda_titulo1.value = ADDITIONAL_COLUMNS['titles']['green']['text']
+            celda_titulo1.fill = PatternFill(start_color=COLORS['green'], end_color=COLORS['green'], fill_type="solid")
+            celda_titulo1.alignment = Alignment(horizontal="center", vertical="center")
+            
+            # Título 2 (Azul): "Gestión de Cobranza en Campo" - siguientes 5 columnas adicionales
+            titulo2_inicio = get_column_letter(num_columnas_originales + ADDITIONAL_COLUMNS['titles']['green']['columns'] + 1)
+            titulo2_fin = get_column_letter(num_columnas_originales + ADDITIONAL_COLUMNS['count'])
+            rango_titulo2 = f"{titulo2_inicio}1:{titulo2_fin}1"
+            worksheet.merge_cells(rango_titulo2)
+            
+            celda_titulo2 = worksheet[f"{titulo2_inicio}1"]
+            celda_titulo2.value = ADDITIONAL_COLUMNS['titles']['blue']['text']
+            celda_titulo2.fill = PatternFill(start_color=COLORS['blue'], end_color=COLORS['blue'], fill_type="solid")
+            celda_titulo2.alignment = Alignment(horizontal="center", vertical="center")
+            
+            # --- PASO 2: Agregar encabezados específicos en la FILA 2 ---
+            for i, encabezado in enumerate(ADDITIONAL_COLUMNS['headers']):
+                col_letra = get_column_letter(num_columnas_originales + 1 + i)
+                worksheet.cell(row=2, column=num_columnas_originales + 1 + i, value=encabezado)
+            
+            # Crear el rango de la tabla incluyendo las 9 columnas adicionales, empezando en fila 2
+            rango_tabla = f"{col_inicio}2:{col_fin_total}{num_filas_tabla + 1}"  # +1 porque startrow=1 mueve todo una fila
+        else:
+            # Lógica para otras hojas: solo datos del DataFrame, terminar con "Criticidad"
+            rango_tabla = f"{col_inicio}2:{col_fin_original}{num_filas_tabla + 1}"  # +1 porque startrow=1 mueve todo una fila
         
         # Crear el objeto Table con nombre único y válido
         nombre_tabla = generate_valid_table_name(sheet_name)
@@ -387,11 +397,14 @@ def crear_tabla_excel(worksheet, df, sheet_name):
         worksheet.add_table(tabla)
         
         # Ajustar automáticamente el ancho de las columnas para que se vea todo el texto
-        for i in range(1, num_columnas_totales + 1):
+        num_columnas_ajustar = num_columnas_totales if incluir_columnas_adicionales else num_columnas_originales
+        fila_inicio_revision = 1 if incluir_columnas_adicionales else 2  # Revisar desde fila 1 si hay títulos, sino desde fila 2
+        
+        for i in range(1, num_columnas_ajustar + 1):
             column_letter = get_column_letter(i)
             max_length = 0
-            # Revisar desde fila 1 (títulos) hasta el final de los datos
-            for row in range(1, num_filas_tabla + 2):  # +2 porque los datos empiezan en fila 2
+            # Revisar desde la fila apropiada hasta el final de los datos
+            for row in range(fila_inicio_revision, num_filas_tabla + 2):  # +2 porque los datos empiezan en fila 2
                 cell_value = worksheet.cell(row=row, column=i).value
                 if cell_value:
                     max_length = max(max_length, len(str(cell_value)))
@@ -528,6 +541,33 @@ def procesar_reporte_antiguedad(archivo_path):
             df_mora.insert(geo_index + 1, 'Link de Geolocalización', df_mora['link_texto'])
             logger.info(f"📍 Insertada columna 'Link de Geolocalización' en df_mora después de '{columna_geolocalizacion}'")
         
+        # --- PASO 4.1: Crear DataFrame de Cuentas con Saldo Vencido ---
+        columna_saldo_vencido = COLUMN_MAPPING.get('saldo_vencido', 'Saldo vencido')
+        
+        # Verificar si existe la columna 'Saldo vencido'
+        if columna_saldo_vencido in df_ordenado.columns:
+            # Crear filtro: Saldo vencido >= 1 Y (Días de mora <= 0 O nulo)
+            df_saldo_vencido = df_ordenado[
+                (df_ordenado[columna_saldo_vencido] >= 1) & 
+                (pd.isna(df_ordenado[columna_mora]) | (df_ordenado[columna_mora] <= 0))
+            ].copy()
+            logger.info(f"Registros con saldo vencido >= 1 y sin mora: {len(df_saldo_vencido)}")
+            
+            if len(df_saldo_vencido) > 0:
+                # Aplicar add_par_column a df_saldo_vencido para eliminar columnas duplicadas y regenerar 'PAR'
+                logger.info(f"🔍 df_saldo_vencido ANTES de add_par_column: {[col for col in df_saldo_vencido.columns if 'par' in str(col).lower()]}")
+                df_saldo_vencido = add_par_column(df_saldo_vencido, columna_mora)
+                
+                # Insertar columna 'Link de Geolocalización' después de 'Geolocalización domicilio' si existen los links
+                if 'link_texto' in df_saldo_vencido.columns and columna_geolocalizacion in df_saldo_vencido.columns:
+                    geo_index = df_saldo_vencido.columns.get_loc(columna_geolocalizacion)
+                    df_saldo_vencido.insert(geo_index + 1, 'Link de Geolocalización', df_saldo_vencido['link_texto'])
+                    logger.info(f"📍 Insertada columna 'Link de Geolocalización' en df_saldo_vencido después de '{columna_geolocalizacion}'")
+            else:
+                logger.info("No se encontraron registros con saldo vencido >= 1 y sin mora")
+        else:
+            logger.warning(f"⚠️ Columna '{columna_saldo_vencido}' no encontrada en DataFrame. Saltando creación de hoja 'Cuentas con saldo vencido'")
+            df_saldo_vencido = None
 
         # --- PASO 5: Distribuir ---
         coordinaciones_data = {}
@@ -584,7 +624,7 @@ def procesar_reporte_antiguedad(archivo_path):
                         escribir_hipervinculo_excel(ws_informe, row_num, link_col, texto, url)
             
             # Crear tabla y aplicar formato final
-            crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe)
+            crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe, incluir_columnas_adicionales=False)
             aplicar_formato_final(ws_informe, df_completo_sin_links, es_hoja_mora=False)
             # --- PASO 6.1: Crear hoja "Mora" ---
             # Verificar columnas duplicadas antes de escribir hoja Mora
@@ -624,8 +664,54 @@ def procesar_reporte_antiguedad(archivo_path):
                         escribir_hipervinculo_excel(worksheet_mora, row_num, link_col, texto, url)
             
             # Crear tabla formal de Excel para la hoja Mora y formato final
-            crear_tabla_excel(worksheet_mora, df_mora_sin_links, 'Mora')
+            crear_tabla_excel(worksheet_mora, df_mora_sin_links, 'Mora', incluir_columnas_adicionales=True)
             aplicar_formato_final(worksheet_mora, df_mora_sin_links, es_hoja_mora=True)
+
+            # --- PASO 6.1.1: Crear hoja "Cuentas con saldo vencido" ---
+            if df_saldo_vencido is not None and len(df_saldo_vencido) > 0:
+                # Verificar columnas duplicadas antes de escribir hoja Saldo Vencido
+                columnas_duplicadas_saldo = df_saldo_vencido.columns[df_saldo_vencido.columns.duplicated()].tolist()
+                if columnas_duplicadas_saldo:
+                    logger.error(f"🚨 COLUMNAS DUPLICADAS encontradas en df_saldo_vencido: {columnas_duplicadas_saldo}")
+                    # Eliminar columnas duplicadas
+                    df_saldo_vencido = df_saldo_vencido.loc[:, ~df_saldo_vencido.columns.duplicated()]
+                    logger.info(f"🗑️ Columnas duplicadas eliminadas de df_saldo_vencido")
+                
+                # DIAGNÓSTICO FINAL: Verificar columnas PAR en df_saldo_vencido
+                columnas_par_saldo = [col for col in df_saldo_vencido.columns if 'par' in str(col).lower()]
+                if columnas_par_saldo:
+                    logger.error(f"🚨 ERROR CRÍTICO: Columnas PAR en Saldo Vencido FINAL: {columnas_par_saldo}")
+                else:
+                    logger.info(f"✅ Saldo Vencido FINAL sin columnas PAR")
+                
+                # Crear DataFrame sin las columnas temporales de links para escritura en Excel
+                df_saldo_vencido_sin_links = df_saldo_vencido.drop(columns=['link_texto', 'link_url'], errors='ignore')
+                
+                df_saldo_vencido_sin_links.to_excel(writer, sheet_name='Cuentas con saldo vencido', index=False, startrow=1)
+                
+                # NO aplicar formato condicional para la hoja "Cuentas con saldo vencido"
+                worksheet_saldo = writer.sheets['Cuentas con saldo vencido']
+                # aplicar_formato_condicional(worksheet_saldo, columna_mora, len(df_saldo_vencido))  # Comentado: no queremos colores en esta hoja
+                
+                # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
+                if 'Link de Geolocalización' in df_saldo_vencido_sin_links.columns:
+                    link_col = df_saldo_vencido_sin_links.columns.get_loc('Link de Geolocalización') + 1  # +1 porque Excel es 1-indexado
+                    
+                    # Escribir hipervínculos usando los datos originales de df_saldo_vencido
+                    for i, (idx, row) in enumerate(df_saldo_vencido.iterrows()):
+                        row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
+                        if 'link_texto' in df_saldo_vencido.columns and 'link_url' in df_saldo_vencido.columns:
+                            texto = row['link_texto']
+                            url = row['link_url']
+                            escribir_hipervinculo_excel(worksheet_saldo, row_num, link_col, texto, url)
+                
+                # Crear tabla formal de Excel para la hoja Saldo Vencido y formato final
+                crear_tabla_excel(worksheet_saldo, df_saldo_vencido_sin_links, 'Cuentas con saldo vencido', incluir_columnas_adicionales=False)
+                aplicar_formato_final(worksheet_saldo, df_saldo_vencido_sin_links, es_hoja_mora=False)
+                
+                logger.info(f"✅ Hoja 'Cuentas con saldo vencido' creada con {len(df_saldo_vencido)} registros")
+            else:
+                logger.info("⚠️ No se creó la hoja 'Cuentas con saldo vencido' (no hay datos o columna faltante)")
 
             # --- PASO 6.2: Crear hojas por coordinación ---
             for coord_name, df_coord in coordinaciones_data.items():
@@ -668,7 +754,7 @@ def procesar_reporte_antiguedad(archivo_path):
                             escribir_hipervinculo_excel(worksheet_coord, row_num, link_col, texto, url)
 
                 # Crear tabla formal de Excel para la hoja de coordinación y formato final
-                crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name)
+                crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name, incluir_columnas_adicionales=False)
                 aplicar_formato_final(worksheet_coord, df_coord_sin_links, es_hoja_mora=False)
 
         logger.info(f"Procesamiento completado exitosamente. Archivo generado: {ruta_salida}")
