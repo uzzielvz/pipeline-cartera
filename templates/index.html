@@ -3,20 +3,365 @@
 {% block title %}Automatizador Crediflexi{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="text-center mb-5">
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-12 text-center mb-5">
             <h1 class="display-4">Crediflexi</h1>
+            <p class="lead">Sistema de Automatización de Reportes</p>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <!-- Reporte de Antigüedad Individual -->
+        <div class="col-md-5 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-center mb-4">
+                        <i class="fas fa-file-excel text-success"></i>
+                        Reporte de Antigüedad Individual
+                    </h5>
+                    <p class="card-text text-muted text-center mb-4">
+                        Procesa un archivo Excel de antigüedad de cartera individual
+                    </p>
+                    
+                    <div class="upload-zone" id="uploadZone1" onclick="document.getElementById('fileInput1').click()">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                            <p class="mb-2">Arrastra tu archivo aquí</p>
+                            <p class="text-muted small">o haz clic para seleccionar</p>
+                            <p class="text-muted small">Formatos: .xlsx, .xls</p>
+                        </div>
+                        <input type="file" id="fileInput1" accept=".xlsx,.xls" style="display: none;" 
+                               onchange="handleFileSelect(event, 1)">
+                    </div>
+
+                    <div id="fileInfo1" class="mt-3" style="display: none;">
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i>
+                            <span id="fileName1"></span>
+                        </div>
+                        <button class="btn btn-success w-100" onclick="processFile(1)">
+                            <i class="fas fa-cog"></i> Procesar Reporte
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="card">
-            <div class="card-body text-center">
-                <h5 class="mb-4">Reporte de Antigüedad</h5>
-                <a href="{{ url_for('reportes.antiguedad_form') }}" class="btn btn-primary">
-                    Procesar
-                </a>
+        <!-- Reporte de Antigüedad Grupal -->
+        <div class="col-md-5 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title text-center mb-4">
+                        <i class="fas fa-users text-primary"></i>
+                        Reporte de Antigüedad Grupal
+                    </h5>
+                    <p class="card-text text-muted text-center mb-4">
+                        Integra 5 archivos Excel para generar reporte grupal consolidado
+                    </p>
+                    
+                    <div class="upload-zone" id="uploadZone2" onclick="document.getElementById('fileInput2').click()">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                            <p class="mb-2">Arrastra tus 5 archivos aquí</p>
+                            <p class="text-muted small">o haz clic para seleccionar</p>
+                            <p class="text-muted small">Formatos: .xlsx, .xls</p>
+                        </div>
+                        <input type="file" id="fileInput2" accept=".xlsx,.xls" multiple style="display: none;" 
+                               onchange="handleFileSelect(event, 2)">
+                    </div>
+
+                    <div id="fileInfo2" class="mt-3" style="display: none;">
+                        <div id="fileList2"></div>
+                        <button class="btn btn-primary w-100" onclick="processFile(2)" id="processBtn2" disabled>
+                            <i class="fas fa-cog"></i> Procesar Reporte Grupal
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+.upload-zone {
+    border: 2px dashed #dee2e6;
+    border-radius: 10px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background-color: #f8f9fa;
+}
+
+.upload-zone:hover {
+    border-color: #007bff;
+    background-color: #e3f2fd;
+}
+
+.upload-zone.dragover {
+    border-color: #28a745;
+    background-color: #e8f5e8;
+}
+
+.upload-content {
+    pointer-events: none;
+}
+
+.card {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.file-item {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-item.success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.file-item.error {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+</style>
+
+<script>
+// Variables globales para almacenar archivos
+let selectedFiles1 = [];
+let selectedFiles2 = [];
+
+// Configurar drag & drop para ambas zonas
+document.addEventListener('DOMContentLoaded', function() {
+    setupDragAndDrop(1);
+    setupDragAndDrop(2);
+});
+
+function setupDragAndDrop(zoneNumber) {
+    const uploadZone = document.getElementById(`uploadZone${zoneNumber}`);
+    const fileInput = document.getElementById(`fileInput${zoneNumber}`);
+
+    // Prevenir comportamiento por defecto
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    // Efectos visuales
+    ['dragenter', 'dragover'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, unhighlight, false);
+    });
+
+    // Manejar archivos soltados
+    uploadZone.addEventListener('drop', handleDrop, false);
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    function highlight(e) {
+        uploadZone.classList.add('dragover');
+    }
+
+    function unhighlight(e) {
+        uploadZone.classList.remove('dragover');
+    }
+
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        handleFiles(files, zoneNumber);
+    }
+}
+
+function handleFileSelect(event, zoneNumber) {
+    const files = event.target.files;
+    handleFiles(files, zoneNumber);
+}
+
+function handleFiles(files, zoneNumber) {
+    const filesArray = Array.from(files);
+    
+    if (zoneNumber === 1) {
+        // Reporte individual - solo 1 archivo
+        if (filesArray.length > 1) {
+            alert('Por favor selecciona solo un archivo para el Reporte Individual');
+            return;
+        }
+        selectedFiles1 = filesArray;
+        displayFileInfo(filesArray[0], zoneNumber);
+    } else {
+        // Reporte grupal - exactamente 5 archivos
+        if (filesArray.length !== 5) {
+            alert('Por favor selecciona exactamente 5 archivos para el Reporte Grupal');
+            return;
+        }
+        selectedFiles2 = filesArray;
+        displayFileList(filesArray, zoneNumber);
+    }
+}
+
+function displayFileInfo(file, zoneNumber) {
+    const fileInfo = document.getElementById(`fileInfo${zoneNumber}`);
+    const fileName = document.getElementById(`fileName${zoneNumber}`);
+    
+    fileName.textContent = file.name;
+    fileInfo.style.display = 'block';
+}
+
+function displayFileList(files, zoneNumber) {
+    const fileInfo = document.getElementById(`fileInfo${zoneNumber}`);
+    const fileList = document.getElementById(`fileList${zoneNumber}`);
+    const processBtn = document.getElementById(`processBtn${zoneNumber}`);
+    
+    let html = '';
+    files.forEach((file, index) => {
+        const fileType = detectFileType(file.name);
+        html += `
+            <div class="file-item ${fileType !== 'desconocido' ? 'success' : 'error'}">
+                <span>
+                    <i class="fas fa-file-excel"></i>
+                    ${file.name}
+                </span>
+                <span class="badge ${fileType !== 'desconocido' ? 'bg-success' : 'bg-danger'}">
+                    ${fileType !== 'desconocido' ? fileType : 'Tipo desconocido'}
+                </span>
+            </div>
+        `;
+    });
+    
+    fileList.innerHTML = html;
+    fileInfo.style.display = 'block';
+    
+    // Habilitar botón si todos los archivos son válidos
+    const allValid = files.every(file => detectFileType(file.name) !== 'desconocido');
+    processBtn.disabled = !allValid;
+}
+
+function detectFileType(fileName) {
+    const name = fileName.toLowerCase();
+    
+    if (name.includes('cobranza')) return 'Cobranza';
+    if (name.includes('conformacion') || name.includes('grupo')) return 'Conformación';
+    if (name.includes('ahorro')) return 'Ahorros';
+    if (name.includes('grupal') && name.includes('antiguedad')) return 'Antigüedad Grupal';
+    if (name.includes('situacion') || name.includes('cartera')) return 'Situación Cartera';
+    
+    return 'desconocido';
+}
+
+function processFile(zoneNumber) {
+    if (zoneNumber === 1) {
+        // Procesar reporte individual
+        if (selectedFiles1.length === 0) {
+            alert('Por favor selecciona un archivo');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('archivo', selectedFiles1[0]);
+        
+        processReport(formData, 'reportes/procesar_antiguedad');
+    } else {
+        // Procesar reporte grupal
+        if (selectedFiles2.length !== 5) {
+            alert('Por favor selecciona exactamente 5 archivos');
+            return;
+        }
+        
+        const formData = new FormData();
+        selectedFiles2.forEach((file, index) => {
+            formData.append('archivos', file);
+        });
+        
+        processReport(formData, 'reportes/procesar_antiguedad_grupal');
+    }
+}
+
+function processReport(formData, endpoint) {
+    // Deshabilitar botones
+    const buttons = document.querySelectorAll('button');
+    buttons.forEach(btn => btn.disabled = true);
+    
+    // Mostrar spinner
+    const spinners = document.querySelectorAll('.fa-cog');
+    spinners.forEach(spinner => {
+        spinner.classList.add('fa-spin');
+    });
+    
+    fetch(`/${endpoint}`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok) {
+            return response.blob();
+        }
+        throw new Error('Error en el procesamiento');
+    })
+    .then(blob => {
+        // Crear enlace de descarga
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reporte_${new Date().getTime()}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // Resetear formularios
+        resetForms();
+    })
+    .catch(error => {
+        alert('Error: ' + error.message);
+    })
+    .finally(() => {
+        // Rehabilitar botones
+        buttons.forEach(btn => btn.disabled = false);
+        
+        // Quitar spinner
+        spinners.forEach(spinner => {
+            spinner.classList.remove('fa-spin');
+        });
+    });
+}
+
+function resetForms() {
+    // Resetear archivos seleccionados
+    selectedFiles1 = [];
+    selectedFiles2 = [];
+    
+    // Ocultar info de archivos
+    document.getElementById('fileInfo1').style.display = 'none';
+    document.getElementById('fileInfo2').style.display = 'none';
+    
+    // Limpiar inputs
+    document.getElementById('fileInput1').value = '';
+    document.getElementById('fileInput2').value = '';
+    
+    // Limpiar lista de archivos
+    document.getElementById('fileList2').innerHTML = '';
+}
+</script>
 {% endblock %}

@@ -1080,21 +1080,18 @@ def download_file(filename):
     else:
         return "Archivo no encontrado", 404
 
-@reportes_bp.route('/antiguedad/procesar', methods=['POST'])
+@reportes_bp.route('/procesar_antiguedad', methods=['POST'])
 def procesar_antiguedad():
     """Procesa el archivo subido y devuelve el reporte"""
     if 'archivo' not in request.files:
-        flash('No se seleccionó ningún archivo', 'error')
-        return redirect(url_for('reportes.antiguedad_form'))
+        return Response('No se seleccionó ningún archivo', status=400)
     
     archivo = request.files['archivo']
     if archivo.filename == '':
-        flash('No se seleccionó ningún archivo', 'error')
-        return redirect(url_for('reportes.antiguedad_form'))
+        return Response('No se seleccionó ningún archivo', status=400)
     
     if not allowed_file(archivo.filename):
-        flash('El archivo debe ser de tipo Excel (.xlsx o .xls)', 'error')
-        return redirect(url_for('reportes.antiguedad_form'))
+        return Response('El archivo debe ser de tipo Excel (.xlsx o .xls)', status=400)
     
     try:
         # Validar tamaño del archivo
@@ -1103,8 +1100,7 @@ def procesar_antiguedad():
         archivo.seek(0)  # Volver al inicio
         
         if file_size > MAX_FILE_SIZE:
-            flash(f'El archivo es demasiado grande. Tamaño máximo permitido: {MAX_FILE_SIZE // (1024*1024)}MB', 'error')
-            return redirect(url_for('reportes.antiguedad_form'))
+            return Response(f'El archivo es demasiado grande. Tamaño máximo permitido: {MAX_FILE_SIZE // (1024*1024)}MB', status=400)
         
         # Guardar archivo temporalmente
         filename = secure_filename(archivo.filename)
@@ -1122,19 +1118,132 @@ def procesar_antiguedad():
         except (OSError, FileNotFoundError):
             pass  # Ignorar errores de eliminación
         
-        # Guardar archivo en carpeta de descargas
-        import shutil
-        download_path = os.path.join('static', 'downloads')
-        os.makedirs(download_path, exist_ok=True)
-        shutil.copy2(ruta_salida, os.path.join(download_path, os.path.basename(ruta_salida)))
-        
-        # Usar flash para mostrar mensaje de éxito con enlace de descarga
-        flash(f'Reporte procesado exitosamente. <a href="{url_for("reportes.download_file", filename=os.path.basename(ruta_salida))}" class="btn btn-sm btn-primary ms-2">Descargar</a>', 'success')
-        
-        # Redirigir de vuelta al formulario
-        return redirect(url_for('reportes.antiguedad_form'))
+        # Devolver el archivo generado directamente
+        return send_file(
+            ruta_salida,
+            as_attachment=True,
+            download_name=f"Reporte_Antiguedad_{datetime.now().strftime('%d%m%Y')}.xlsx",
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
         
     except Exception as e:
         logger.error(f"Error en procesamiento de archivo: {str(e)}")
-        flash(f'Error procesando archivo: {str(e)}', 'error')
-        return redirect(url_for('reportes.antiguedad_form'))
+        return Response(f'Error procesando archivo: {str(e)}', status=500)
+
+def detectar_tipo_archivo(df):
+    """Detecta el tipo de archivo por su estructura/columnas"""
+    columnas_str = ' '.join([str(col).lower() for col in df.columns])
+    
+    # Detectar "Cobranza.xlsx"
+    if 'cobranza' in columnas_str or 'call_center' in columnas_str or 'estatus' in columnas_str:
+        return 'cobranza'
+    
+    # Detectar "Reporte de conformacion de grupo"  
+    elif 'conformacion' in columnas_str or 'grupo' in columnas_str:
+        return 'conformacion_grupo'
+    
+    # Detectar "Ahorros"
+    elif 'ahorro' in columnas_str or 'deposito' in columnas_str:
+        return 'ahorros'
+    
+    # Detectar "ReportedeAntiguedaddeCarteraGrupal"
+    elif 'grupal' in columnas_str and 'antiguedad' in columnas_str:
+        return 'antiguedad_grupal'
+    
+    # Detectar "Situacion de cartera.xls"
+    elif 'situacion' in columnas_str or 'estado' in columnas_str:
+        return 'situacion_cartera'
+    
+    else:
+        return 'desconocido'
+
+@reportes_bp.route('/procesar_antiguedad_grupal', methods=['POST'])
+def procesar_antiguedad_grupal():
+    """Procesa los 5 archivos subidos para el reporte grupal"""
+    if 'archivos' not in request.files:
+        return Response('No se seleccionaron archivos', status=400)
+    
+    archivos = request.files.getlist('archivos')
+    
+    if len(archivos) != 5:
+        return Response('Deben seleccionarse exactamente 5 archivos', status=400)
+    
+    # Validar todos los archivos
+    for archivo in archivos:
+        if archivo.filename == '':
+            return Response('Uno o más archivos están vacíos', status=400)
+        
+        if not allowed_file(archivo.filename):
+            return Response(f'El archivo {archivo.filename} debe ser de tipo Excel (.xlsx o .xls)', status=400)
+    
+    try:
+        # Guardar archivos temporalmente y detectar tipos
+        archivos_info = []
+        archivos_paths = []
+        
+        for archivo in archivos:
+            filename = secure_filename(archivo.filename)
+            archivo_path = os.path.join(UPLOAD_FOLDER, filename)
+            archivo.save(archivo_path)
+            archivos_paths.append(archivo_path)
+            
+            # Detectar tipo de archivo
+            df_temp = pd.read_excel(archivo_path, engine='openpyxl', dtype=DTYPE_CONFIG, header=0)
+            tipo = detectar_tipo_archivo(df_temp)
+            
+            archivos_info.append({
+                'filename': filename,
+                'path': archivo_path,
+                'tipo': tipo,
+                'df': df_temp
+            })
+            
+            logger.info(f"Archivo {filename} detectado como tipo: {tipo}")
+        
+        # Verificar que se detectaron todos los tipos requeridos
+        tipos_requeridos = ['cobranza', 'conformacion_grupo', 'ahorros', 'antiguedad_grupal', 'situacion_cartera']
+        tipos_detectados = [info['tipo'] for info in archivos_info]
+        
+        tipos_faltantes = set(tipos_requeridos) - set(tipos_detectados)
+        if tipos_faltantes:
+            return Response(f'Faltan tipos de archivo: {", ".join(tipos_faltantes)}', status=400)
+        
+        # Procesar reporte grupal (por ahora, solo devolver un mensaje de éxito)
+        logger.info("Iniciando procesamiento de reporte grupal...")
+        
+        # TODO: Implementar la lógica de consolidación de los 5 archivos
+        # Por ahora, solo creamos un archivo de ejemplo
+        
+        # Limpiar archivos temporales
+        for archivo_path in archivos_paths:
+            try:
+                os.remove(archivo_path)
+            except (OSError, FileNotFoundError):
+                pass
+        
+        # Crear un archivo Excel de ejemplo para el reporte grupal
+        from openpyxl import Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Reporte Grupal"
+        ws['A1'] = "Reporte de Antigüedad Grupal"
+        ws['A2'] = "Archivos procesados:"
+        
+        for i, info in enumerate(archivos_info, start=3):
+            ws[f'A{i}'] = f"{info['filename']} - Tipo: {info['tipo']}"
+        
+        # Guardar archivo temporal
+        ruta_salida = os.path.join(UPLOAD_FOLDER, f"reporte_grupal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+        wb.save(ruta_salida)
+        
+        # Devolver el archivo generado
+        return send_file(
+            ruta_salida,
+            as_attachment=True,
+            download_name=f"Reporte_Grupal_{datetime.now().strftime('%d%m%Y')}.xlsx",
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error en procesamiento de archivos grupales: {str(e)}")
+        return Response(f'Error procesando archivos: {str(e)}', status=500)
