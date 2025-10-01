@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, send_file, flash, redirect, url_for, Response
 import pandas as pd
 from openpyxl.formatting.rule import ColorScaleRule
-from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import numbers
@@ -424,8 +424,15 @@ def procesar_reporte_antiguedad(archivo_path):
         
         # --- PASO 1: Cargar y limpiar ---
         logger.info(f"Iniciando procesamiento del archivo: {archivo_path}")
-        df = pd.read_excel(archivo_path, engine='openpyxl', dtype=DTYPE_CONFIG)
+        df = pd.read_excel(archivo_path, engine='openpyxl', dtype=DTYPE_CONFIG, header=0)
         df = clean_dataframe_columns(df)
+        
+        # Debug: Verificar las primeras filas después de la carga
+        logger.info(f"🔍 DEBUG CARGA DE DATOS:")
+        logger.info(f"   - Filas cargadas: {len(df)}")
+        logger.info(f"   - Columnas: {list(df.columns)[:10]}...")  # Primeras 10 columnas
+        if len(df) > 0:
+            logger.info(f"   - Primera fila: {df.iloc[0].to_dict()}")
         
         
         # Obtener nombres de columnas desde configuración
@@ -712,6 +719,289 @@ def procesar_reporte_antiguedad(archivo_path):
                 logger.info(f"✅ Hoja 'Cuentas con saldo vencido' creada con {len(df_saldo_vencido)} registros")
             else:
                 logger.info("⚠️ No se creó la hoja 'Cuentas con saldo vencido' (no hay datos o columna faltante)")
+
+            # --- PASO 6.1.2: Crear hoja "Liquidación anticipada" ---
+            logger.info("Creando hoja 'Liquidación anticipada'")
+            
+            # Validar columnas requeridas para liquidación anticipada
+            # Mapear a los nombres reales de columnas basados en el contenido de la primera fila
+            columnas_requeridas = {
+                'ciclo': 'Ciclo',
+                'nombre_acreditado': 'Nombre acreditado', 
+                'intereses_vencidos': 'Saldo interés vencido',
+                'comision_vencida': 'Saldo comisión vencida',
+                'recargos': 'Saldo recargos',
+                'saldo_capital': 'Saldo capital'
+            }
+            
+            # Verificar qué columnas existen en df_completo
+            logger.info(f"🔍 DIAGNÓSTICO DETALLADO DE COLUMNAS:")
+            logger.info(f"   - Columnas disponibles en df_completo: {list(df_completo.columns)}")
+            logger.info(f"   - Columnas requeridas: {list(columnas_requeridas.values())}")
+            
+            # Función para buscar columnas por similitud
+            def buscar_columna_similar(columna_requerida, columnas_disponibles):
+                """Busca una columna por similitud de nombre"""
+                columna_requerida_clean = columna_requerida.lower().replace(' ', '').replace('ó', 'o').replace('í', 'i').replace('é', 'e').replace('á', 'a').replace('ú', 'u')
+                
+                logger.info(f"🔍 Buscando columna similar a '{columna_requerida}' (limpio: '{columna_requerida_clean}')")
+                
+                for col_disponible in columnas_disponibles:
+                    col_disponible_clean = col_disponible.lower().replace(' ', '').replace('ó', 'o').replace('í', 'i').replace('é', 'e').replace('á', 'a').replace('ú', 'u')
+                    
+                    # Búsqueda exacta
+                    if col_disponible_clean == columna_requerida_clean:
+                        logger.info(f"✅ Encontrada coincidencia exacta: '{col_disponible}'")
+                        return col_disponible
+                    
+                    # Búsqueda por coincidencia parcial
+                    if columna_requerida_clean in col_disponible_clean or col_disponible_clean in columna_requerida_clean:
+                        logger.info(f"✅ Encontrada coincidencia parcial: '{col_disponible}'")
+                        return col_disponible
+                
+                logger.warning(f"❌ No se encontró columna similar a '{columna_requerida}'")
+                return None
+            
+            # Mapear columnas requeridas a columnas reales
+            columnas_mapeadas = {}
+            columnas_faltantes = []
+            
+            # Mapeo manual basado en la estructura real del archivo
+            # Según el debug anterior, las columnas están en posiciones específicas
+            mapeo_manual = {
+                'ciclo': df_completo.columns[7] if len(df_completo.columns) > 7 else None,  # Unnamed: 7
+                'nombre_acreditado': df_completo.columns[8] if len(df_completo.columns) > 8 else None,  # Unnamed: 8
+                'intereses_vencidos': df_completo.columns[24] if len(df_completo.columns) > 24 else None,  # Unnamed: 24 (Saldo interés vencido)
+                'comision_vencida': df_completo.columns[25] if len(df_completo.columns) > 25 else None,  # Unnamed: 25 (Saldo comisión vencida)
+                'recargos': df_completo.columns[26] if len(df_completo.columns) > 26 else None,  # Unnamed: 26 (Saldo recargos)
+                'saldo_capital': df_completo.columns[21] if len(df_completo.columns) > 21 else None,  # Unnamed: 21 (Saldo capital)
+            }
+            
+            for key, columna_requerida in columnas_requeridas.items():
+                # Primero intentar mapeo manual
+                columna_manual = mapeo_manual.get(key)
+                if columna_manual:
+                    columnas_mapeadas[key] = columna_manual
+                    logger.info(f"✅ Columna '{columna_requerida}' mapeada manualmente a '{columna_manual}'")
+                elif columna_requerida in df_completo.columns:
+                    columnas_mapeadas[key] = columna_requerida
+                    logger.info(f"✅ Columna '{columna_requerida}' encontrada exactamente")
+                else:
+                    # Buscar por similitud
+                    columna_encontrada = buscar_columna_similar(columna_requerida, df_completo.columns)
+                    if columna_encontrada:
+                        columnas_mapeadas[key] = columna_encontrada
+                        logger.info(f"✅ Columna '{columna_requerida}' mapeada por similitud a '{columna_encontrada}'")
+                    else:
+                        columnas_faltantes.append(columna_requerida)
+                        logger.warning(f"⚠️ Columna '{columna_requerida}' no encontrada para 'Liquidación anticipada'")
+            
+            if not columnas_faltantes:
+                logger.info("✅ Todas las columnas requeridas para liquidación anticipada están disponibles")
+            else:
+                logger.warning(f"⚠️ Columnas faltantes: {columnas_faltantes}")
+            
+            # Definir columnas para la hoja de liquidación anticipada
+            liquidacion_columns = [
+                COLUMN_MAPPING.get('codigo', 'Código acreditado'),  # A
+                'Ciclo',                                           # B
+                'Nombre del acreditado',                           # C
+                'Saldo interés vencido',                           # D
+                'Saldo comisión vencida',                          # E
+                'Saldo recargos',                                  # F
+                'Saldo capital',                                   # G
+                'Intereses del próximo pago sin vencer',           # H
+                'Comisiones del próximo pago sin vencer',          # I
+                'Cantidad a liquidar',                             # J
+                'Cálculo válido hasta el próximo pago'             # K
+            ]
+            
+            # Crear DataFrame vacío para la hoja de liquidación anticipada
+            df_liquidacion = pd.DataFrame(columns=liquidacion_columns)
+            
+            # Inicializar fila con datos vacíos
+            fila_inicial = [''] * len(liquidacion_columns)
+            df_liquidacion.loc[0] = fila_inicial
+            
+            # Escribir la hoja
+            df_liquidacion.to_excel(writer, sheet_name='Liquidación anticipada', index=False, startrow=1)
+            ws_liquidacion = writer.sheets['Liquidación anticipada']
+            
+            # --- Diseño personalizado para la hoja de liquidación anticipada ---
+            
+            # 1. Combinar celdas D1:F1 para "Montos Vencidos" con relleno azul claro
+            ws_liquidacion.merge_cells('D1:F1')
+            celda_titulo = ws_liquidacion['D1']
+            celda_titulo.value = 'Montos Vencidos'
+            celda_titulo.fill = PatternFill(start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
+            celda_titulo.font = Font(bold=True)
+            celda_titulo.alignment = Alignment(horizontal='center', vertical='center')
+            
+            # 2. Establecer ancho de columna optimizado para cada tipo de dato
+            widths = {
+                'A': 18,  # Código acreditado (más ancho para códigos largos)
+                'B': 12,  # Ciclo
+                'C': 25,  # Nombre (más ancho para nombres largos)
+                'D': 20,  # Saldo interés vencido
+                'E': 20,  # Saldo comisión vencida
+                'F': 15,  # Saldo recargos
+                'G': 18,  # Saldo capital
+                'H': 22,  # Intereses próximo pago
+                'I': 22,  # Comisiones próximo pago
+                'J': 20,  # Cantidad a liquidar
+                'K': 25   # Cálculo válido hasta
+            }
+            
+            for col_letter, width in widths.items():
+                ws_liquidacion.column_dimensions[col_letter].width = width
+            
+            # 3. Establecer altura de filas para mejor legibilidad
+            ws_liquidacion.row_dimensions[2].height = 35  # Encabezados más altos
+            ws_liquidacion.row_dimensions[3].height = 30  # Datos más altos
+            
+            # 4. Aplicar formato minimalista pero legible a todas las celdas
+            # Encabezados (fila 2)
+            for col in range(1, 12):  # Columnas A a K
+                cell = ws_liquidacion.cell(row=2, column=col)
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                cell.font = Font(name='Arial', size=10, bold=True, color='2F4F4F')  # Azul gris oscuro
+                cell.fill = PatternFill(start_color='F8F9FA', end_color='F8F9FA', fill_type='solid')  # Gris muy claro
+                cell.border = Border(
+                    left=Side(style='thin', color='D3D3D3'),
+                    right=Side(style='thin', color='D3D3D3'),
+                    top=Side(style='thin', color='D3D3D3'),
+                    bottom=Side(style='thin', color='D3D3D3')
+                )
+            
+            # Datos (fila 3)
+            for col in range(1, 12):  # Columnas A a K
+                cell = ws_liquidacion.cell(row=3, column=col)
+                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                cell.font = Font(name='Arial', size=10, color='2C2C2C')  # Gris oscuro
+                cell.border = Border(
+                    left=Side(style='thin', color='D3D3D3'),
+                    right=Side(style='thin', color='D3D3D3'),
+                    top=Side(style='thin', color='D3D3D3'),
+                    bottom=Side(style='thin', color='D3D3D3')
+                )
+            
+            # 4. Aplicar relleno verde claro a celdas manuales (columnas H, I, K) con formato mejorado
+            celdas_manuales = ['H3', 'I3', 'K3']
+            for celda in celdas_manuales:
+                ws_liquidacion[celda].fill = PatternFill(start_color=COLORS['light_green'], end_color=COLORS['light_green'], fill_type='solid')
+                ws_liquidacion[celda].font = Font(name='Arial', size=10, bold=True, color='2C2C2C')  # Texto en negrita para celdas manuales
+            
+            # 5. Aplicar formato de moneda a columnas D:J (4:10)
+            for col_letter in ['D', 'E', 'F', 'G', 'H', 'I', 'J']:
+                ws_liquidacion[f'{col_letter}3'].number_format = EXCEL_CONFIG['currency_format']
+            
+            # 5. Formatear celda A3 (Código acreditado) para mantener ceros al inicio
+            ws_liquidacion['A3'].number_format = '@'  # Formato de texto para mantener ceros
+            
+            # 6. Agregar fórmulas BUSCARV en B3:G3 para autocompletado desde "Informe Completo"
+            # Obtener el nombre de la hoja "Informe Completo" (fecha_actual)
+            nombre_hoja_informe = hoja_informe  # Ya definido anteriormente
+            
+            # Calcular el rango de la tabla "Informe Completo" (asumiendo que va desde A2 hasta el final)
+            ultima_fila_informe = len(df_completo) + 1  # +1 para incluir encabezados
+            ultima_columna_informe = len(df_completo.columns)
+            ultima_col_letter = get_column_letter(ultima_columna_informe)
+            rango_informe = f"A$2:{ultima_col_letter}${ultima_fila_informe}"
+            
+            logger.info(f"🔍 Debug fórmulas BUSCARV:")
+            logger.info(f"   - Nombre hoja informe: '{nombre_hoja_informe}'")
+            logger.info(f"   - Rango informe: '{rango_informe}'")
+            logger.info(f"   - Registros en df_completo: {len(df_completo)}")
+            logger.info(f"   - Columnas en df_completo: {list(df_completo.columns)}")
+            
+            # Mostrar las primeras filas para verificar datos
+            if len(df_completo) > 0:
+                primera_columna = df_completo.columns[0]  # Primera columna (debería ser 'Código acreditado')
+                logger.info(f"   - Primera columna: '{primera_columna}'")
+                logger.info(f"   - Primeros 3 valores de '{primera_columna}': {df_completo[primera_columna].head(3).tolist()}")
+            else:
+                logger.error("   - ERROR: df_completo está vacío!")
+            
+            # B3: Ciclo - con manejo de valores nulos usando VLOOKUP (inglés)
+            if 'ciclo' in columnas_mapeadas:
+                col_ciclo_index = df_completo.columns.get_loc(columnas_mapeadas['ciclo']) + 1  # +1 porque Excel es 1-indexado
+                formula_ciclo = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_ciclo_index},FALSE),\"\")"
+                ws_liquidacion['B3'] = formula_ciclo
+                logger.info(f"✅ Fórmula B3 (Ciclo): {formula_ciclo}")
+            else:
+                ws_liquidacion['B3'] = '""'
+                logger.warning(f"⚠️ Columna 'Ciclo' no encontrada, B3 quedará vacío")
+            
+            # C3: Nombre del acreditado - con manejo de valores nulos usando VLOOKUP (inglés)
+            if 'nombre_acreditado' in columnas_mapeadas:
+                col_nombre_index = df_completo.columns.get_loc(columnas_mapeadas['nombre_acreditado']) + 1
+                formula_nombre = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_nombre_index},FALSE),\"\")"
+                ws_liquidacion['C3'] = formula_nombre
+                logger.info(f"✅ Fórmula C3 (Nombre): {formula_nombre}")
+            else:
+                ws_liquidacion['C3'] = '""'
+                logger.warning(f"⚠️ Columna 'Nombre acreditado' no encontrada, C3 quedará vacío")
+            
+            # D3: Saldo interés vencido - con manejo de valores nulos y formato numérico usando VLOOKUP (inglés)
+            if 'intereses_vencidos' in columnas_mapeadas:
+                col_intereses_index = df_completo.columns.get_loc(columnas_mapeadas['intereses_vencidos']) + 1
+                formula_intereses = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_intereses_index},FALSE),0)"
+                ws_liquidacion['D3'] = formula_intereses
+                logger.info(f"✅ Fórmula D3 (Intereses): {formula_intereses}")
+            else:
+                ws_liquidacion['D3'] = '0'
+                logger.warning(f"⚠️ Columna 'Intereses vencidos' no encontrada, D3 = 0")
+            
+            # E3: Saldo comisión vencida - con manejo de valores nulos y formato numérico usando VLOOKUP (inglés)
+            if 'comision_vencida' in columnas_mapeadas:
+                col_comision_index = df_completo.columns.get_loc(columnas_mapeadas['comision_vencida']) + 1
+                formula_comision = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_comision_index},FALSE),0)"
+                ws_liquidacion['E3'] = formula_comision
+                logger.info(f"✅ Fórmula E3 (Comisión): {formula_comision}")
+            else:
+                ws_liquidacion['E3'] = '0'
+                logger.warning(f"⚠️ Columna 'Comisión vencida' no encontrada, E3 = 0")
+            
+            # F3: Saldo recargos - con manejo de valores nulos y formato numérico usando VLOOKUP (inglés)
+            if 'recargos' in columnas_mapeadas:
+                col_recargos_index = df_completo.columns.get_loc(columnas_mapeadas['recargos']) + 1
+                formula_recargos = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_recargos_index},FALSE),0)"
+                ws_liquidacion['F3'] = formula_recargos
+                logger.info(f"✅ Fórmula F3 (Recargos): {formula_recargos}")
+            else:
+                ws_liquidacion['F3'] = '0'
+                logger.warning(f"⚠️ Columna 'Recargos' no encontrada, F3 = 0")
+            
+            # G3: Saldo capital - con manejo de valores nulos y formato numérico usando VLOOKUP (inglés)
+            if 'saldo_capital' in columnas_mapeadas:
+                col_capital_index = df_completo.columns.get_loc(columnas_mapeadas['saldo_capital']) + 1
+                formula_capital = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_capital_index},FALSE),0)"
+                ws_liquidacion['G3'] = formula_capital
+                logger.info(f"✅ Fórmula G3 (Capital): {formula_capital}")
+            else:
+                ws_liquidacion['G3'] = '0'
+                logger.warning(f"⚠️ Columna 'Saldo capital' no encontrada, G3 = 0")
+            
+            # 7. Establecer fórmula de suma en columna J3 para "Cantidad a liquidar"
+            ws_liquidacion['J3'] = '=SUM(D3:I3)'
+            
+            # 8. NO usar crear_tabla_excel para mantener el diseño personalizado minimalista
+            
+            # 9. Aplicar formato final personalizado sin tabla formal
+            # Inmovilizar paneles en A3 para mejor navegación
+            ws_liquidacion.freeze_panes = 'A3'
+            
+            # 10. Asegurar que las celdas fuera del área principal tengan fondo blanco
+            for row in range(1, 15):  # Filas 1-14
+                for col in range(1, 15):  # Columnas A-N
+                    cell = ws_liquidacion.cell(row=row, column=col)
+                    # Solo aplicar relleno blanco si no tiene relleno especial
+                    if cell.fill.start_color.index == '00000000':  # Sin relleno
+                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+            
+            # 11. Instrucciones removidas para diseño más limpio
+            
+            logger.info("✅ Hoja 'Liquidación anticipada' creada")
 
             # --- PASO 6.2: Crear hojas por coordinación ---
             for coord_name, df_coord in coordinaciones_data.items():

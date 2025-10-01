@@ -13,7 +13,13 @@ COLUMN_MAPPING = {
     'mora': 'Días de mora',
     'coordinacion': 'Coordinación',
     'geolocalizacion': 'Geolocalización domicilio',
-    'saldo_vencido': 'Saldo vencido'
+    'saldo_vencido': 'Saldo vencido',
+    'ciclo': 'Ciclo',
+    'nombre_acreditado': 'Nombre acreditado',
+    'intereses_vencidos': 'Intereses vencidos',
+    'comision_vencida': 'Comisión vencida',
+    'recargos': 'Recargos',
+    'saldo_capital': 'Saldo capital'
 }
 
 # Configuración de tipos de datos para prevenir pérdida de datos
@@ -49,7 +55,8 @@ EXCEL_CONFIG = {
 COLORS = {
     'light_blue': 'DDEBF7',
     'green': 'C6EFCE',
-    'blue': 'B3D9FF'
+    'blue': 'B3D9FF',
+    'light_green': 'E6FFE6'
 }
 
 # Configuración de columnas adicionales
