@@ -17,28 +17,46 @@ consultor_bp = Blueprint('consultor', __name__)
 def dashboard():
     """Dashboard accesible para consultores y administradores"""
     
-    # Obtener reportes recientes (últimos 30 días)
-    from datetime import datetime, timedelta
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    # Obtener filtros de la URL
+    filter_type = request.args.get('type')
+    filter_recent = request.args.get('recent')
     
-    recent_reports = ReportHistory.query.filter(
-        ReportHistory.created_at >= thirty_days_ago
-    ).order_by(ReportHistory.created_at.desc()).limit(20).all()
+    # Construir query base
+    query = ReportHistory.query
     
-    # Estadísticas básicas
+    # Aplicar filtros
+    if filter_type in ['individual', 'grupal']:
+        query = query.filter(ReportHistory.report_type == filter_type)
+    
+    if filter_recent == 'true':
+        from datetime import datetime, timedelta
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        query = query.filter(ReportHistory.created_at >= thirty_days_ago)
+    
+    # Obtener reportes filtrados
+    filtered_reports = query.order_by(ReportHistory.created_at.desc()).limit(20).all()
+    
+    # Estadísticas básicas (siempre totales, no filtrados)
     total_reports = ReportHistory.query.count()
     individual_reports = ReportHistory.query.filter_by(report_type='individual').count()
     grupal_reports = ReportHistory.query.filter_by(report_type='grupal').count()
+    
+    # Reportes recientes para estadística
+    from datetime import datetime, timedelta
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    recent_count = ReportHistory.query.filter(
+        ReportHistory.created_at >= thirty_days_ago
+    ).count()
     
     stats = {
         'total_reports': total_reports,
         'individual_reports': individual_reports,
         'grupal_reports': grupal_reports,
-        'recent_reports': len(recent_reports)
+        'recent_reports': recent_count
     }
     
     return render_template('consultor/dashboard.html', 
-                         reports=recent_reports, 
+                         reports=filtered_reports, 
                          stats=stats)
 
 @consultor_bp.route('/reports')

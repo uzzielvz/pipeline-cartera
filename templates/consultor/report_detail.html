@@ -36,9 +36,9 @@
                 <div class="report-meta">
                     <span class="report-type">
                         {% if report.report_type == 'individual' %}
-                            Reporte Individual
+                            Reporte de Antigüedad Individual
                         {% else %}
-                            Reporte Grupal
+                            Reporte de Antigüedad Grupal
                         {% endif %}
                     </span>
                     <span class="report-date">{{ report.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
@@ -76,9 +76,9 @@
                         <label>Tipo de reporte:</label>
                         <span class="type-badge {{ report.report_type }}">
                             {% if report.report_type == 'individual' %}
-                                Individual
+                                Reporte de Antigüedad Individual
                             {% else %}
-                                Grupal
+                                Reporte de Antigüedad Grupal
                             {% endif %}
                         </span>
                     </div>

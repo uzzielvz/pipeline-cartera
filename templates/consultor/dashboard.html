@@ -14,22 +14,22 @@
 
     <!-- Estadísticas -->
     <div class="stats-grid">
-        <div class="stat-card">
+        <a href="{{ url_for('consultor.dashboard') }}" class="stat-card filter-stat {{ 'active' if not request.args.get('type') }}">
             <div class="stat-number">{{ stats.total_reports }}</div>
             <div class="stat-label">Total Reportes</div>
-        </div>
-        <div class="stat-card">
+        </a>
+        <a href="{{ url_for('consultor.dashboard', type='individual') }}" class="stat-card filter-stat {{ 'active' if request.args.get('type') == 'individual' }}">
             <div class="stat-number">{{ stats.individual_reports }}</div>
-            <div class="stat-label">Individuales</div>
-        </div>
-        <div class="stat-card">
+            <div class="stat-label">Antigüedad Individual</div>
+        </a>
+        <a href="{{ url_for('consultor.dashboard', type='grupal') }}" class="stat-card filter-stat {{ 'active' if request.args.get('type') == 'grupal' }}">
             <div class="stat-number">{{ stats.grupal_reports }}</div>
-            <div class="stat-label">Grupales</div>
-        </div>
-        <div class="stat-card">
+            <div class="stat-label">Antigüedad Grupal</div>
+        </a>
+        <a href="{{ url_for('consultor.dashboard', recent='true') }}" class="stat-card filter-stat {{ 'active' if request.args.get('recent') == 'true' }}">
             <div class="stat-number">{{ stats.recent_reports }}</div>
             <div class="stat-label">Recientes</div>
-        </div>
+        </a>
     </div>
 
     <!-- Acciones rápidas -->
@@ -57,9 +57,9 @@
                     <div class="report-info">
                         <div class="report-type">
                             {% if report.report_type == 'individual' %}
-                                📊 Individual
+                                📊 Reporte de Antigüedad Individual
                             {% else %}
-                                👥 Grupal
+                                👥 Reporte de Antigüedad Grupal
                             {% endif %}
                         </div>
                         <div class="report-name">{{ report.filename }}</div>

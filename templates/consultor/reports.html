@@ -27,9 +27,9 @@
             <a href="{{ url_for('consultor.reports') }}" 
                class="filter-btn {{ 'active' if not request.args.get('type') }}">Todos</a>
             <a href="{{ url_for('consultor.reports', type='individual') }}" 
-               class="filter-btn {{ 'active' if request.args.get('type') == 'individual' }}">Individuales</a>
+               class="filter-btn {{ 'active' if request.args.get('type') == 'individual' }}">Antigüedad Individual</a>
             <a href="{{ url_for('consultor.reports', type='grupal') }}" 
-               class="filter-btn {{ 'active' if request.args.get('type') == 'grupal' }}">Grupales</a>
+               class="filter-btn {{ 'active' if request.args.get('type') == 'grupal' }}">Antigüedad Grupal</a>
         </div>
     </div>
 
@@ -44,9 +44,9 @@
                     <div class="report-info">
                         <div class="report-type">
                             {% if report.report_type == 'individual' %}
-                                📊 Individual
+                                📊 Reporte de Antigüedad Individual
                             {% else %}
-                                👥 Grupal
+                                👥 Reporte de Antigüedad Grupal
                             {% endif %}
                         </div>
                         <div class="report-name">{{ report.filename }}</div>
