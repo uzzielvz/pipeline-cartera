@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+
+{% block title %}Reportes - Crediflexi{% endblock %}
+
+{% block content %}
+<div class="consultor-dashboard">
+    <header class="dashboard-header">
+        <div class="user-info">
+            <span class="user-name">{{ current_user.username }}</span>
+            <span class="user-role">{{ current_user.role }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="logout-btn">Salir</a>
+        </div>
+    </header>
+
+    <!-- Navegación -->
+    <div class="navigation">
+        <a href="{{ url_for('consultor.dashboard') }}" class="nav-btn">🏠 Dashboard</a>
+        {% if current_user.is_admin() %}
+            <a href="{{ url_for('index') }}" class="nav-btn">⚙️ Generar Reportes</a>
+        {% endif %}
+        <a href="{{ url_for('consultor.reports') }}" class="nav-btn active">📋 Todos los Reportes</a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filters">
+        <div class="filter-group">
+            <a href="{{ url_for('consultor.reports') }}" 
+               class="filter-btn {{ 'active' if not request.args.get('type') }}">Todos</a>
+            <a href="{{ url_for('consultor.reports', type='individual') }}" 
+               class="filter-btn {{ 'active' if request.args.get('type') == 'individual' }}">Individuales</a>
+            <a href="{{ url_for('consultor.reports', type='grupal') }}" 
+               class="filter-btn {{ 'active' if request.args.get('type') == 'grupal' }}">Grupales</a>
+        </div>
+    </div>
+
+    <!-- Lista de reportes -->
+    <div class="reports-section">
+        <h3>Todos los Reportes ({{ reports.total }} total)</h3>
+        
+        {% if reports.items %}
+            <div class="reports-list">
+                {% for report in reports.items %}
+                <div class="report-item">
+                    <div class="report-info">
+                        <div class="report-type">
+                            {% if report.report_type == 'individual' %}
+                                📊 Individual
+                            {% else %}
+                                👥 Grupal
+                            {% endif %}
+                        </div>
+                        <div class="report-name">{{ report.filename }}</div>
+                        <div class="report-meta">
+                            Por {{ report.user.username }} • {{ report.created_at.strftime('%d/%m/%Y %H:%M') }}
+                            {% if report.file_size %}
+                                • {{ (report.file_size / 1024 / 1024) | round(2) }} MB
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="report-actions">
+                        <a href="{{ url_for('consultor.download_report', report_id=report.id) }}" 
+                           class="action-btn download-btn" title="Descargar">📥</a>
+                        <a href="{{ url_for('consultor.view_report', report_id=report.id) }}" 
+                           class="action-btn view-btn" title="Ver detalles">👁️</a>
+                        {% if current_user.is_admin() %}
+                            <button onclick="confirmDelete({{ report.id }}, '{{ report.filename }}')" 
+                                    class="action-btn delete-btn" title="Eliminar">🗑️</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Paginación -->
+            {% if reports.pages > 1 %}
+            <div class="pagination">
+                {% if reports.has_prev %}
+                    <a href="{{ url_for('consultor.reports', page=reports.prev_num, type=request.args.get('type')) }}" 
+                       class="page-btn">« Anterior</a>
+                {% endif %}
+                
+                {% for page_num in reports.iter_pages() %}
+                    {% if page_num %}
+                        {% if page_num != reports.page %}
+                            <a href="{{ url_for('consultor.reports', page=page_num, type=request.args.get('type')) }}" 
+                               class="page-btn">{{ page_num }}</a>
+                        {% else %}
+                            <span class="page-btn active">{{ page_num }}</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="page-dots">...</span>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if reports.has_next %}
+                    <a href="{{ url_for('consultor.reports', page=reports.next_num, type=request.args.get('type')) }}" 
+                       class="page-btn">Siguiente »</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">📁</div>
+                <h4>No hay reportes disponibles</h4>
+                <p>Los reportes generados aparecerán aquí</p>
+                {% if current_user.is_admin() %}
+                    <a href="{{ url_for('index') }}" class="action-btn">Generar Reporte</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal de confirmación para eliminar -->
+<div id="deleteModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h4>Confirmar Eliminación</h4>
+            <span class="close" onclick="closeDeleteModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p>¿Estás seguro de que quieres eliminar el reporte <strong id="reportName"></strong>?</p>
+            <p class="warning">Esta acción no se puede deshacer.</p>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeDeleteModal()" class="btn-cancel">Cancelar</button>
+            <button onclick="deleteReport()" class="btn-delete">Eliminar</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.navigation {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.nav-btn {
+    background: white;
+    color: #007bff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    transition: all 0.2s;
+    border: 1px solid #e1e5e9;
+}
+
+.nav-btn:hover {
+    background: #007bff;
+    color: white;
+    transform: translateY(-1px);
+}
+
+.nav-btn.active {
+    background: #007bff;
+    color: white;
+}
+
+.filters {
+    margin-bottom: 30px;
+}
+
+.filter-group {
+    display: flex;
+    gap: 8px;
+    background: white;
+    padding: 8px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    width: fit-content;
+}
+
+.filter-btn {
+    padding: 8px 16px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.2s;
+}
+
+.filter-btn:hover {
+    background: #f8f9fa;
+    color: #333;
+}
+
+.filter-btn.active {
+    background: #007bff;
+    color: white;
+}
+
+.reports-section {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.reports-section h3 {
+    margin: 0 0 24px 0;
+    color: #333;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.report-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    margin-bottom: 12px;
+    transition: all 0.2s;
+}
+
+.report-item:hover {
+    background: #e9ecef;
+    transform: translateY(-1px);
+}
+
+.report-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.action-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    font-size: 16px;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+}
+
+.download-btn {
+    background: #007bff;
+    color: white;
+}
+
+.download-btn:hover {
+    background: #0056b3;
+}
+
+.view-btn {
+    background: #6c757d;
+    color: white;
+}
+
+.view-btn:hover {
+    background: #545b62;
+}
+
+.delete-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.delete-btn:hover {
+    background: #c82333;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 30px;
+}
+
+.page-btn {
+    padding: 8px 12px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-size: 14px;
+    color: #666;
+    border: 1px solid #e1e5e9;
+    transition: all 0.2s;
+}
+
+.page-btn:hover {
+    background: #f8f9fa;
+    color: #333;
+}
+
+.page-btn.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.page-dots {
+    padding: 8px 4px;
+    color: #666;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 12px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+    padding: 20px 24px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h4 {
+    margin: 0;
+    color: #333;
+}
+
+.close {
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+}
+
+.close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px 24px;
+}
+
+.modal-body p {
+    margin: 0 0 12px 0;
+    color: #666;
+}
+
+.warning {
+    color: #dc3545;
+    font-weight: 500;
+}
+
+.modal-footer {
+    padding: 0 24px 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.btn-cancel, .btn-delete {
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-cancel {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-cancel:hover {
+    background: #545b62;
+}
+
+.btn-delete {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-delete:hover {
+    background: #c82333;
+}
+
+@media (max-width: 768px) {
+    .consultor-dashboard {
+        padding: 20px 16px;
+    }
+    
+    .navigation {
+        flex-direction: column;
+    }
+    
+    .report-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    
+    .report-actions {
+        align-self: flex-end;
+    }
+    
+    .filter-group {
+        flex-wrap: wrap;
+    }
+}
+</style>
+
+<script>
+let reportToDelete = null;
+
+function confirmDelete(reportId, reportName) {
+    reportToDelete = reportId;
+    document.getElementById('reportName').textContent = reportName;
+    document.getElementById('deleteModal').style.display = 'flex';
+}
+
+function closeDeleteModal() {
+    document.getElementById('deleteModal').style.display = 'none';
+    reportToDelete = null;
+}
+
+function deleteReport() {
+    if (!reportToDelete) return;
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/consultor/delete_report/${reportToDelete}`;
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// Cerrar modal al hacer clic fuera
+window.onclick = function(event) {
+    const modal = document.getElementById('deleteModal');
+    if (event.target === modal) {
+        closeDeleteModal();
+    }
+}
+</script>
+{% endblock %}

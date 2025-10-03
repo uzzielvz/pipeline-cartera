@@ -1,143 +1,295 @@
 {% extends "base.html" %}
 
-{% block title %}Automatizador Crediflexi{% endblock %}
+{% block title %}Crediflexi{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row justify-content-center">
-        <div class="col-12 text-center mb-5">
-            <h1 class="display-4">Crediflexi</h1>
-            <p class="lead">Sistema de Automatización de Reportes</p>
+<div class="minimal-main">
+    <header class="main-header">
+        <div class="user-info">
+            <span class="user-name">{{ current_user.username }}</span>
+            <span class="user-role">{{ current_user.role }}</span>
+            <a href="{{ url_for('consultor.dashboard') }}" class="dashboard-btn">📊 Dashboard</a>
+            <a href="{{ url_for('auth.logout') }}" class="logout-btn">Salir</a>
         </div>
-    </div>
+    </header>
 
-    <div class="row justify-content-center">
-        <!-- Reporte de Antigüedad Individual -->
-        <div class="col-md-5 mb-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title text-center mb-4">
-                        <i class="fas fa-file-excel text-success"></i>
-                        Reporte de Antigüedad Individual
-                    </h5>
-                    <p class="card-text text-muted text-center mb-4">
-                        Procesa un archivo Excel de antigüedad de cartera individual
-                    </p>
-                    
-                    <div class="upload-zone" id="uploadZone1" onclick="document.getElementById('fileInput1').click()">
-                        <div class="upload-content">
-                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                            <p class="mb-2">Arrastra tu archivo aquí</p>
-                            <p class="text-muted small">o haz clic para seleccionar</p>
-                            <p class="text-muted small">Formatos: .xlsx, .xls</p>
-                        </div>
-                        <input type="file" id="fileInput1" accept=".xlsx,.xls" style="display: none;" 
-                               onchange="handleFileSelect(event, 1)">
-                    </div>
-
-                    <div id="fileInfo1" class="mt-3" style="display: none;">
-                        <div class="alert alert-success">
-                            <i class="fas fa-check-circle"></i>
-                            <span id="fileName1"></span>
-                        </div>
-                        <button class="btn btn-success w-100" onclick="processFile(1)">
-                            <i class="fas fa-cog"></i> Procesar Reporte
-                        </button>
-                    </div>
+    <div class="reports-container">
+        <!-- Reporte Individual -->
+        <div class="report-card">
+            <div class="report-icon">📊</div>
+            <h3>Reporte Individual</h3>
+            <p>Procesa un archivo Excel de antigüedad de cartera</p>
+            
+            <div class="upload-zone" id="uploadZone1" onclick="document.getElementById('fileInput1').click()">
+                <div class="upload-content">
+                    <div class="upload-icon">📁</div>
+                    <p>Arrastra tu archivo aquí</p>
+                    <small>o haz clic para seleccionar</small>
                 </div>
+                <input type="file" id="fileInput1" accept=".xlsx,.xls" style="display: none;" 
+                       onchange="handleFileSelect(event, 1)">
+            </div>
+
+            <div id="fileInfo1" class="file-info" style="display: none;">
+                <div class="file-success">
+                    <span id="fileName1"></span>
+                </div>
+                <button class="process-btn" onclick="processFile(1)">
+                    Procesar
+                </button>
             </div>
         </div>
 
-        <!-- Reporte de Antigüedad Grupal -->
-        <div class="col-md-5 mb-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title text-center mb-4">
-                        <i class="fas fa-users text-primary"></i>
-                        Reporte de Antigüedad Grupal
-                    </h5>
-                    <p class="card-text text-muted text-center mb-4">
-                        Integra 5 archivos Excel para generar reporte grupal consolidado
-                    </p>
-                    
-                    <div class="upload-zone" id="uploadZone2" onclick="document.getElementById('fileInput2').click()">
-                        <div class="upload-content">
-                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                            <p class="mb-2">Arrastra tus 5 archivos aquí</p>
-                            <p class="text-muted small">o haz clic para seleccionar</p>
-                            <p class="text-muted small">Formatos: .xlsx, .xls</p>
-                        </div>
-                        <input type="file" id="fileInput2" accept=".xlsx,.xls" multiple style="display: none;" 
-                               onchange="handleFileSelect(event, 2)">
-                    </div>
-
-                    <div id="fileInfo2" class="mt-3" style="display: none;">
-                        <div id="fileList2"></div>
-                        <button class="btn btn-primary w-100" onclick="processFile(2)" id="processBtn2" disabled>
-                            <i class="fas fa-cog"></i> Procesar Reporte Grupal
-                        </button>
-                    </div>
+        <!-- Reporte Grupal -->
+        <div class="report-card">
+            <div class="report-icon">👥</div>
+            <h3>Reporte Grupal</h3>
+            <p>Integra 5 archivos Excel para generar reporte consolidado</p>
+            
+            <div class="upload-zone" id="uploadZone2" onclick="document.getElementById('fileInput2').click()">
+                <div class="upload-content">
+                    <div class="upload-icon">📁</div>
+                    <p>Arrastra tus 5 archivos aquí</p>
+                    <small>o haz clic para seleccionar</small>
                 </div>
+                <input type="file" id="fileInput2" accept=".xlsx,.xls" multiple style="display: none;" 
+                       onchange="handleFileSelect(event, 2)">
+            </div>
+
+            <div id="fileInfo2" class="file-info" style="display: none;">
+                <div id="fileList2"></div>
+                <button class="process-btn" onclick="processFile(2)" id="processBtn2" disabled>
+                    Procesar
+                </button>
             </div>
         </div>
     </div>
 </div>
 
 <style>
-.upload-zone {
-    border: 2px dashed #dee2e6;
-    border-radius: 10px;
-    padding: 2rem;
+.minimal-main {
+    min-height: 100vh;
+    padding: 40px 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.main-header {
+    text-align: right;
+    margin-bottom: 40px;
+}
+
+.user-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    background: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.user-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.user-role {
+    background: #007bff;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.dashboard-btn {
+    color: #007bff;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.dashboard-btn:hover {
+    color: #0056b3;
+}
+
+.logout-btn {
+    color: #666;
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.logout-btn:hover {
+    color: #dc3545;
+}
+
+.reports-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 30px;
+}
+
+.report-card {
+    background: white;
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
     text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.report-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.report-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+}
+
+.report-card h3 {
+    font-size: 24px;
+    font-weight: 600;
+    color: #333;
+    margin: 0 0 12px 0;
+}
+
+.report-card p {
+    color: #666;
+    margin: 0 0 30px 0;
+    line-height: 1.5;
+}
+
+.upload-zone {
+    border: 2px dashed #e1e5e9;
+    border-radius: 12px;
+    padding: 40px 20px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    background-color: #f8f9fa;
+    transition: all 0.2s;
+    background: #f8f9fa;
 }
 
 .upload-zone:hover {
     border-color: #007bff;
-    background-color: #e3f2fd;
+    background: #f0f7ff;
 }
 
 .upload-zone.dragover {
-    border-color: #28a745;
-    background-color: #e8f5e8;
+    border-color: #007bff;
+    background: #e6f3ff;
+    transform: scale(1.02);
 }
 
 .upload-content {
     pointer-events: none;
 }
 
-.card {
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    transition: transform 0.2s ease;
+.upload-icon {
+    font-size: 32px;
+    margin-bottom: 16px;
+    opacity: 0.7;
 }
 
-.card:hover {
-    transform: translateY(-5px);
+.upload-zone p {
+    margin: 0 0 8px 0;
+    font-weight: 500;
+    color: #333;
+}
+
+.upload-zone small {
+    color: #666;
+    font-size: 14px;
+}
+
+.file-info {
+    margin-top: 20px;
+}
+
+.file-success {
+    background: #d4edda;
+    color: #155724;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.process-btn {
+    width: 100%;
+    padding: 16px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.process-btn:hover:not(:disabled) {
+    background: #0056b3;
+}
+
+.process-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
 }
 
 .file-item {
-    background-color: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 5px;
-    padding: 0.5rem;
-    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    font-size: 14px;
 }
 
 .file-item.success {
-    background-color: #d4edda;
+    background: #d4edda;
     border-color: #c3e6cb;
     color: #155724;
 }
 
 .file-item.error {
-    background-color: #f8d7da;
+    background: #f8d7da;
     border-color: #f5c6cb;
     color: #721c24;
+}
+
+.file-item .badge {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 12px;
+}
+
+@media (max-width: 768px) {
+    .minimal-main {
+        padding: 20px 16px;
+    }
+    
+    .reports-container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .report-card {
+        padding: 30px 20px;
+    }
+    
+    .user-info {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
 }
 </style>
 
@@ -239,10 +391,7 @@ function displayFileList(files, zoneNumber) {
         const fileType = detectFileType(file.name);
         html += `
             <div class="file-item ${fileType !== 'desconocido' ? 'success' : 'error'}">
-                <span>
-                    <i class="fas fa-file-excel"></i>
-                    ${file.name}
-                </span>
+                <span>📊 ${file.name}</span>
                 <span class="badge ${fileType !== 'desconocido' ? 'bg-success' : 'bg-danger'}">
                     ${fileType !== 'desconocido' ? fileType : 'Tipo desconocido'}
                 </span>
@@ -300,14 +449,8 @@ function processFile(zoneNumber) {
 
 function processReport(formData, endpoint) {
     // Deshabilitar botones
-    const buttons = document.querySelectorAll('button');
+    const buttons = document.querySelectorAll('.process-btn');
     buttons.forEach(btn => btn.disabled = true);
-    
-    // Mostrar spinner
-    const spinners = document.querySelectorAll('.fa-cog');
-    spinners.forEach(spinner => {
-        spinner.classList.add('fa-spin');
-    });
     
     fetch(`/${endpoint}`, {
         method: 'POST',
@@ -315,16 +458,27 @@ function processReport(formData, endpoint) {
     })
     .then(response => {
         if (response.ok) {
-            return response.blob();
+            // Obtener el nombre del archivo del header Content-Disposition
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = `reporte_${new Date().getTime()}.xlsx`;
+            
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1].replace(/['"]/g, '');
+                }
+            }
+            
+            return response.blob().then(blob => ({ blob, filename }));
         }
         throw new Error('Error en el procesamiento');
     })
-    .then(blob => {
+    .then(({ blob, filename }) => {
         // Crear enlace de descarga
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `reporte_${new Date().getTime()}.xlsx`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -339,11 +493,6 @@ function processReport(formData, endpoint) {
     .finally(() => {
         // Rehabilitar botones
         buttons.forEach(btn => btn.disabled = false);
-        
-        // Quitar spinner
-        spinners.forEach(spinner => {
-            spinner.classList.remove('fa-spin');
-        });
     });
 }
 

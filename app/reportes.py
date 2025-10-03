@@ -1,4 +1,7 @@
 from flask import Blueprint, render_template, request, send_file, flash, redirect, url_for, Response
+from app.models import db, ReportHistory
+from flask_login import current_user, login_required
+from app.auth import require_permission
 import pandas as pd
 from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1081,6 +1084,8 @@ def download_file(filename):
         return "Archivo no encontrado", 404
 
 @reportes_bp.route('/procesar_antiguedad', methods=['POST'])
+@login_required
+@require_permission('generate_reports')
 def procesar_antiguedad():
     """Procesa el archivo subido y devuelve el reporte"""
     if 'archivo' not in request.files:
@@ -1112,6 +1117,23 @@ def procesar_antiguedad():
         # Procesar archivo
         ruta_salida, num_coordinaciones = procesar_reporte_antiguedad(archivo_path)
         
+        # Guardar en el historial de reportes
+        try:
+            file_size = os.path.getsize(ruta_salida)
+            report_history = ReportHistory(
+                user_id=current_user.id,
+                report_type='individual',
+                filename=os.path.basename(ruta_salida),
+                file_path=ruta_salida,
+                file_size=file_size
+            )
+            db.session.add(report_history)
+            db.session.commit()
+            logger.info(f"Reporte guardado en historial: {os.path.basename(ruta_salida)}")
+        except Exception as e:
+            logger.error(f"Error guardando reporte en historial: {str(e)}")
+            db.session.rollback()
+        
         # Limpiar archivo temporal
         try:
             os.remove(archivo_path)
@@ -1122,7 +1144,7 @@ def procesar_antiguedad():
         return send_file(
             ruta_salida,
             as_attachment=True,
-            download_name=f"Reporte_Antiguedad_{datetime.now().strftime('%d%m%Y')}.xlsx",
+            download_name=os.path.basename(ruta_salida),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
@@ -1158,6 +1180,8 @@ def detectar_tipo_archivo(df):
         return 'desconocido'
 
 @reportes_bp.route('/procesar_antiguedad_grupal', methods=['POST'])
+@login_required
+@require_permission('generate_reports')
 def procesar_antiguedad_grupal():
     """Procesa los 5 archivos subidos para el reporte grupal"""
     if 'archivos' not in request.files:
@@ -1236,11 +1260,28 @@ def procesar_antiguedad_grupal():
         ruta_salida = os.path.join(UPLOAD_FOLDER, f"reporte_grupal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
         wb.save(ruta_salida)
         
+        # Guardar en el historial de reportes
+        try:
+            file_size = os.path.getsize(ruta_salida)
+            report_history = ReportHistory(
+                user_id=current_user.id,
+                report_type='grupal',
+                filename=os.path.basename(ruta_salida),
+                file_path=ruta_salida,
+                file_size=file_size
+            )
+            db.session.add(report_history)
+            db.session.commit()
+            logger.info(f"Reporte grupal guardado en historial: {os.path.basename(ruta_salida)}")
+        except Exception as e:
+            logger.error(f"Error guardando reporte grupal en historial: {str(e)}")
+            db.session.rollback()
+        
         # Devolver el archivo generado
         return send_file(
             ruta_salida,
             as_attachment=True,
-            download_name=f"Reporte_Grupal_{datetime.now().strftime('%d%m%Y')}.xlsx",
+            download_name=os.path.basename(ruta_salida),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         

@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Crediflexi{% endblock %}
+
+{% block content %}
+<div class="consultor-dashboard">
+    <header class="dashboard-header">
+        <div class="user-info">
+            <span class="user-name">{{ current_user.username }}</span>
+            <span class="user-role">Consultor</span>
+            <a href="{{ url_for('auth.logout') }}" class="logout-btn">Salir</a>
+        </div>
+    </header>
+
+    <!-- Estadísticas -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.total_reports }}</div>
+            <div class="stat-label">Total Reportes</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.individual_reports }}</div>
+            <div class="stat-label">Individuales</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.grupal_reports }}</div>
+            <div class="stat-label">Grupales</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.recent_reports }}</div>
+            <div class="stat-label">Recientes</div>
+        </div>
+    </div>
+
+    <!-- Acciones rápidas -->
+    <div class="quick-actions">
+        <a href="{{ url_for('consultor.reports') }}" class="action-btn">
+            📋 Ver Todos los Reportes
+        </a>
+        {% if current_user.is_admin() %}
+            <a href="{{ url_for('index') }}" class="action-btn">
+                ⚙️ Generar Reportes
+            </a>
+        {% endif %}
+        <a href="{{ url_for('consultor.reports') }}?filter=recent" class="action-btn">
+            ⏰ Reportes Recientes
+        </a>
+    </div>
+
+    <!-- Reportes recientes -->
+    <div class="recent-reports">
+        <h3>Reportes Recientes</h3>
+        {% if reports %}
+            <div class="reports-list">
+                {% for report in reports %}
+                <div class="report-item">
+                    <div class="report-info">
+                        <div class="report-type">
+                            {% if report.report_type == 'individual' %}
+                                📊 Individual
+                            {% else %}
+                                👥 Grupal
+                            {% endif %}
+                        </div>
+                        <div class="report-name">{{ report.filename }}</div>
+                        <div class="report-meta">
+                            Por {{ report.user.username }} • {{ report.created_at.strftime('%d/%m/%Y') }}
+                        </div>
+                    </div>
+                    <div class="report-actions">
+                        <a href="{{ url_for('consultor.download_report', report_id=report.id) }}" 
+                           class="download-btn" title="Descargar">📥</a>
+                        <a href="{{ url_for('consultor.view_report', report_id=report.id) }}" 
+                           class="view-btn" title="Ver detalles">👁️</a>
+                        {% if current_user.is_admin() %}
+                            <button onclick="confirmDelete({{ report.id }}, '{{ report.filename }}')" 
+                                    class="delete-btn" title="Eliminar">🗑️</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">📁</div>
+                <h4>No hay reportes recientes</h4>
+                <p>Los reportes generados aparecerán aquí</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal de confirmación para eliminar -->
+<div id="deleteModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h4>Confirmar Eliminación</h4>
+            <span class="close" onclick="closeDeleteModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p>¿Estás seguro de que quieres eliminar el reporte <strong id="reportName"></strong>?</p>
+            <p class="warning">Esta acción no se puede deshacer.</p>
+        </div>
+        <div class="modal-footer">
+            <button onclick="closeDeleteModal()" class="btn-cancel">Cancelar</button>
+            <button onclick="deleteReport()" class="btn-delete">Eliminar</button>
+        </div>
+    </div>
+</div>
+
+<style>
+body {
+    background: #f8f9fa;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+.consultor-dashboard {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 20px;
+}
+
+.dashboard-header {
+    margin-bottom: 40px;
+    text-align: right;
+}
+
+.user-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    background: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.user-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.user-role {
+    background: #6c757d;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.logout-btn {
+    color: #666;
+    text-decoration: none;
+    font-size: 14px;
+    transition: color 0.2s;
+}
+
+.logout-btn:hover {
+    color: #dc3545;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.stat-card {
+    background: white;
+    padding: 24px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 32px;
+    font-weight: 700;
+    color: #007bff;
+    margin-bottom: 8px;
+}
+
+.stat-label {
+    color: #666;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.quick-actions {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 40px;
+    flex-wrap: wrap;
+}
+
+.action-btn {
+    background: white;
+    color: #007bff;
+    padding: 16px 24px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    transition: all 0.2s;
+    flex: 1;
+    min-width: 200px;
+    text-align: center;
+}
+
+.action-btn:hover {
+    background: #007bff;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,123,255,0.2);
+}
+
+.recent-reports {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.recent-reports h3 {
+    margin: 0 0 24px 0;
+    color: #333;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.reports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.report-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.report-info {
+    flex: 1;
+}
+
+.report-type {
+    font-size: 12px;
+    color: #007bff;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.report-name {
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.report-meta {
+    font-size: 12px;
+    color: #666;
+}
+
+.report-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.download-btn, .view-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    font-size: 16px;
+    transition: all 0.2s;
+}
+
+.download-btn {
+    background: #007bff;
+    color: white;
+}
+
+.download-btn:hover {
+    background: #0056b3;
+}
+
+.view-btn {
+    background: #6c757d;
+    color: white;
+}
+
+.view-btn:hover {
+    background: #545b62;
+}
+
+.delete-btn {
+    background: #dc3545;
+    color: white;
+}
+
+.delete-btn:hover {
+    background: #c82333;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+}
+
+.empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.empty-state h4 {
+    margin: 0 0 8px 0;
+    color: #333;
+}
+
+.empty-state p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background-color: white;
+    border-radius: 12px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+    padding: 20px 24px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h4 {
+    margin: 0;
+    color: #333;
+}
+
+.close {
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+}
+
+.close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px 24px;
+}
+
+.modal-body p {
+    margin: 0 0 12px 0;
+    color: #666;
+}
+
+.warning {
+    color: #dc3545;
+    font-weight: 500;
+}
+
+.modal-footer {
+    padding: 0 24px 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.btn-cancel, .btn-delete {
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-cancel {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-cancel:hover {
+    background: #545b62;
+}
+
+.btn-delete {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-delete:hover {
+    background: #c82333;
+}
+
+@media (max-width: 768px) {
+    .consultor-dashboard {
+        padding: 20px 16px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+    
+    .quick-actions {
+        flex-direction: column;
+    }
+    
+    .action-btn {
+        min-width: auto;
+    }
+    
+    .report-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .report-actions {
+        align-self: flex-end;
+    }
+}
+</style>
+
+<script>
+let reportToDelete = null;
+
+function confirmDelete(reportId, reportName) {
+    reportToDelete = reportId;
+    document.getElementById('reportName').textContent = reportName;
+    document.getElementById('deleteModal').style.display = 'flex';
+}
+
+function closeDeleteModal() {
+    document.getElementById('deleteModal').style.display = 'none';
+    reportToDelete = null;
+}
+
+function deleteReport() {
+    if (!reportToDelete) return;
+    
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/consultor/delete_report/${reportToDelete}`;
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// Cerrar modal al hacer clic fuera
+window.onclick = function(event) {
+    const modal = document.getElementById('deleteModal');
+    if (event.target === modal) {
+        closeDeleteModal();
+    }
+}
+</script>
+{% endblock %}

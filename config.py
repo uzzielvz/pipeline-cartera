@@ -99,3 +99,20 @@ CURRENCY_COLUMNS_KEYWORDS = ['monto', 'saldo', 'importe', 'cantidad', 'pago']
 
 # Configuración de columnas de fecha
 DATE_COLUMNS_KEYWORDS = ['fecha', 'date']
+
+# Configuración de autenticación
+SECRET_KEY = 'tu-clave-secreta-super-segura-aqui-cambiar-en-produccion'
+SQLALCHEMY_DATABASE_URI = 'sqlite:///crediflexi.db'
+SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+# Configuración de roles
+USER_ROLES = {
+    'ADMIN': 'Administrador/Generador',
+    'CONSULTOR': 'Consultor'
+}
+
+# Configuración de permisos
+PERMISSIONS = {
+    'ADMIN': ['generate_reports', 'view_reports', 'manage_users'],
+    'CONSULTOR': ['view_reports']
+}

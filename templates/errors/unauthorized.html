@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Acceso No Autorizado - Crediflexi{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <div class="card border-danger">
+                <div class="card-body p-5">
+                    <i class="fas fa-exclamation-triangle fa-5x text-danger mb-4"></i>
+                    <h1 class="h2 text-danger mb-3">Acceso No Autorizado</h1>
+                    <p class="lead mb-4">
+                        No tienes permisos para acceder a esta función.
+                    </p>
+                    <p class="text-muted mb-4">
+                        Si crees que esto es un error, contacta al administrador del sistema.
+                    </p>
+                    <div class="d-grid gap-2 d-md-block">
+                        <a href="{{ url_for('index') }}" class="btn btn-primary">
+                            <i class="fas fa-home"></i> Ir al Inicio
+                        </a>
+                        <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.card {
+    border-radius: 15px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn {
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+</style>
+{% endblock %}
