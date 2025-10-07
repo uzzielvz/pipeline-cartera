@@ -15,7 +15,7 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 import urllib.parse
 from config import (
-    ALLOWED_EXTENSIONS, UPLOAD_FOLDER, MAX_FILE_SIZE, COLUMN_MAPPING, 
+    ALLOWED_EXTENSIONS, UPLOAD_FOLDER, REPORTS_FOLDER, MAX_FILE_SIZE, COLUMN_MAPPING, 
     DTYPE_CONFIG, LISTA_FRAUDE, EXCEL_CONFIG, COLORS, ADDITIONAL_COLUMNS,
     MORA_BLUE_COLUMNS, CURRENCY_COLUMNS_KEYWORDS, DATE_COLUMNS_KEYWORDS
 )
@@ -29,6 +29,32 @@ reportes_bp = Blueprint('reportes', __name__)
 def allowed_file(filename):
     """Verifica que el archivo sea Excel"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def move_to_reports_folder(file_path, report_type='individual'):
+    """Mueve un archivo generado al directorio de reportes permanentes"""
+    try:
+        # Crear directorio si no existe
+        os.makedirs(REPORTS_FOLDER, exist_ok=True)
+        
+        # Generar nombre único para el archivo
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = os.path.basename(file_path)
+        name, ext = os.path.splitext(filename)
+        
+        # Crear nuevo nombre con timestamp y tipo
+        new_filename = f"{name}_{report_type}_{timestamp}{ext}"
+        new_path = os.path.join(REPORTS_FOLDER, new_filename)
+        
+        # Mover archivo
+        import shutil
+        shutil.move(file_path, new_path)
+        
+        logger.info(f"✅ Archivo movido a directorio de reportes: {new_path}")
+        return new_path
+        
+    except Exception as e:
+        logger.error(f"❌ Error moviendo archivo a directorio de reportes: {str(e)}")
+        return file_path  # Retornar ruta original si hay error
 
 def validate_file_size(file_path):
     """Valida que el archivo no exceda el tamaño máximo permitido"""
@@ -1129,19 +1155,22 @@ def procesar_antiguedad():
         # Procesar archivo
         ruta_salida, num_coordinaciones = procesar_reporte_antiguedad(archivo_path)
         
+        # *** NUEVO: Mover archivo al directorio de reportes permanentes ***
+        ruta_final = move_to_reports_folder(ruta_salida, 'individual')
+        
         # Guardar en el historial de reportes
         try:
-            file_size = os.path.getsize(ruta_salida)
+            file_size = os.path.getsize(ruta_final)
             report_history = ReportHistory(
                 user_id=current_user.id,
                 report_type='individual',
-                filename=os.path.basename(ruta_salida),
-                file_path=ruta_salida,
+                filename=os.path.basename(ruta_final),
+                file_path=ruta_final,  # Usar ruta final en directorio de reportes
                 file_size=file_size
             )
             db.session.add(report_history)
             db.session.commit()
-            logger.info(f"Reporte guardado en historial: {os.path.basename(ruta_salida)}")
+            logger.info(f"Reporte guardado en historial: {os.path.basename(ruta_final)}")
         except Exception as e:
             logger.error(f"Error guardando reporte en historial: {str(e)}")
             db.session.rollback()
@@ -1154,9 +1183,9 @@ def procesar_antiguedad():
         
         # Devolver el archivo generado directamente
         return send_file(
-            ruta_salida,
+            ruta_final,  # Usar ruta final en directorio de reportes
             as_attachment=True,
-            download_name=os.path.basename(ruta_salida),
+            download_name=os.path.basename(ruta_final),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         
@@ -1272,28 +1301,31 @@ def procesar_antiguedad_grupal():
         ruta_salida = os.path.join(UPLOAD_FOLDER, f"reporte_grupal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
         wb.save(ruta_salida)
         
+        # *** NUEVO: Mover archivo al directorio de reportes permanentes ***
+        ruta_final = move_to_reports_folder(ruta_salida, 'grupal')
+        
         # Guardar en el historial de reportes
         try:
-            file_size = os.path.getsize(ruta_salida)
+            file_size = os.path.getsize(ruta_final)
             report_history = ReportHistory(
                 user_id=current_user.id,
                 report_type='grupal',
-                filename=os.path.basename(ruta_salida),
-                file_path=ruta_salida,
+                filename=os.path.basename(ruta_final),
+                file_path=ruta_final,  # Usar ruta final en directorio de reportes
                 file_size=file_size
             )
             db.session.add(report_history)
             db.session.commit()
-            logger.info(f"Reporte grupal guardado en historial: {os.path.basename(ruta_salida)}")
+            logger.info(f"Reporte grupal guardado en historial: {os.path.basename(ruta_final)}")
         except Exception as e:
             logger.error(f"Error guardando reporte grupal en historial: {str(e)}")
             db.session.rollback()
         
         # Devolver el archivo generado
         return send_file(
-            ruta_salida,
+            ruta_final,  # Usar ruta final en directorio de reportes
             as_attachment=True,
-            download_name=os.path.basename(ruta_salida),
+            download_name=os.path.basename(ruta_final),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         

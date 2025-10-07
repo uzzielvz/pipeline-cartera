@@ -5,6 +5,7 @@ Configuración centralizada para el sistema de reportes de antigüedad
 # Configuración de archivos
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
 UPLOAD_FOLDER = 'uploads'
+REPORTS_FOLDER = 'static/downloads/reports'  # Directorio dedicado para reportes permanentes
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 
 # Configuración de columnas
