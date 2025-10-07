@@ -445,8 +445,13 @@ def crear_tabla_excel(worksheet, df, sheet_name, incluir_columnas_adicionales=Fa
         # Si hay algún error, no interrumpir el proceso principal
         logger.warning(f"No se pudo crear la tabla para la hoja {sheet_name}: {str(e)}")
 
-def procesar_reporte_antiguedad(archivo_path):
-    """Procesa el reporte de antigüedad con mejoras de robustez y mantenibilidad"""
+def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
+    """Procesa el reporte de antigüedad con mejoras de robustez y mantenibilidad
+    
+    Args:
+        archivo_path: Ruta del archivo Excel a procesar
+        codigos_a_excluir: Lista opcional de códigos de acreditado a excluir del reporte
+    """
     try:
         # Validar archivo
         validate_file_size(archivo_path)
@@ -455,6 +460,12 @@ def procesar_reporte_antiguedad(archivo_path):
         logger.info(f"Iniciando procesamiento del archivo: {archivo_path}")
         df = pd.read_excel(archivo_path, engine='openpyxl', dtype=DTYPE_CONFIG, header=0)
         df = clean_dataframe_columns(df)
+        
+        # Aplicar filtro de exclusión si se especifica
+        if codigos_a_excluir:
+            registros_antes = len(df)
+            df = df[~df['Código acreditado'].isin(codigos_a_excluir)]
+            logger.info(f"🔍 Filtro aplicado: Excluidos códigos {codigos_a_excluir}. Registros: {registros_antes} → {len(df)}")
         
         # Debug: Verificar las primeras filas después de la carga
         logger.info(f"🔍 DEBUG CARGA DE DATOS:")
@@ -1152,11 +1163,20 @@ def procesar_antiguedad():
         
         logger.info(f"Archivo subido exitosamente: {filename} ({file_size} bytes)")
         
-        # Procesar archivo
-        ruta_salida, num_coordinaciones = procesar_reporte_antiguedad(archivo_path)
+        # Verificar si se debe generar también el reporte de colaboradores
+        incluir_colaboradores = request.form.get('incluir_colaboradores', 'false').lower() == 'true'
+        logger.info(f"📋 Generar reporte de colaboradores: {incluir_colaboradores}")
         
-        # *** NUEVO: Mover archivo al directorio de reportes permanentes ***
-        ruta_final = move_to_reports_folder(ruta_salida, 'individual')
+        # Generar reporte principal (excluir códigos 001053 y 001145 si está marcado)
+        # Buscar tanto como strings como números (Excel puede convertirlos)
+        codigos_a_excluir = ['001053', '001145', 1053, 1145] if incluir_colaboradores else None
+        ruta_salida, num_coordinaciones = procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=codigos_a_excluir)
+        
+        # Mover al directorio de reportes SIN modificar el nombre
+        import shutil
+        os.makedirs(REPORTS_FOLDER, exist_ok=True)
+        ruta_final = os.path.join(REPORTS_FOLDER, os.path.basename(ruta_salida))
+        shutil.move(ruta_salida, ruta_final)
         
         # Guardar en el historial de reportes
         try:
@@ -1170,16 +1190,91 @@ def procesar_antiguedad():
             )
             db.session.add(report_history)
             db.session.commit()
-            logger.info(f"Reporte guardado en historial: {os.path.basename(ruta_final)}")
+            logger.info(f"Reporte principal guardado en historial: {os.path.basename(ruta_final)}")
         except Exception as e:
-            logger.error(f"Error guardando reporte en historial: {str(e)}")
+            logger.error(f"Error guardando reporte principal: {str(e)}")
             db.session.rollback()
         
+        # Generar reporte de colaboradores si está marcado
+        if incluir_colaboradores:
+            try:
+                logger.info("📋 Generando reporte de colaboradores...")
+                
+                # Leer archivo original nuevamente
+                df_temp = pd.read_excel(archivo_path, engine='openpyxl', dtype=DTYPE_CONFIG, header=0)
+                df_temp = clean_dataframe_columns(df_temp)
+                
+                # DEBUG: Ver qué códigos hay
+                logger.info(f"🔍 Total registros en archivo: {len(df_temp)}")
+                logger.info(f"🔍 Columnas disponibles: {df_temp.columns.tolist()}")
+                if 'Código acreditado' in df_temp.columns:
+                    codigos_unicos = df_temp['Código acreditado'].unique()
+                    logger.info(f"🔍 Códigos únicos en archivo (primeros 10): {codigos_unicos[:10].tolist()}")
+                    logger.info(f"🔍 ¿Código 001053 existe? {'001053' in codigos_unicos}")
+                    logger.info(f"🔍 ¿Código 001145 existe? {'001145' in codigos_unicos}")
+                
+                # Filtrar SOLO los códigos de colaboradores (buscar como números y como strings)
+                codigos_colaboradores = ['001053', '001145', 1053, 1145]
+                df_colab = df_temp[df_temp['Código acreditado'].isin(codigos_colaboradores)]
+                
+                logger.info(f"🔍 Registros de colaboradores encontrados: {len(df_colab)}")
+                
+                if len(df_colab) > 0:
+                    # Guardar DataFrame filtrado temporalmente
+                    temp_colab_path = os.path.join(UPLOAD_FOLDER, f"temp_colab_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx")
+                    df_colab.to_excel(temp_colab_path, index=False, engine='openpyxl')
+                    
+                    # Procesar archivo temporal (sin excluir nada)
+                    ruta_colab, _ = procesar_reporte_antiguedad(temp_colab_path, codigos_a_excluir=None)
+                    
+                    # Renombrar para agregar "(Colab)"
+                    nombre_original = os.path.basename(ruta_colab)
+                    # Cambiar "ReportedeAntiguedad_DDMMYYYY.xlsx" a "ReportedeAntiguedad(Colab)_DDMMYYYY.xlsx"
+                    nombre_colab = nombre_original.replace('ReportedeAntiguedad_', 'ReportedeAntiguedad(Colab)_')
+                    if 'ReportedeAntigüedad_' in nombre_original:
+                        nombre_colab = nombre_original.replace('ReportedeAntigüedad_', 'ReportedeAntigüedad(Colab)_')
+                    
+                    ruta_colab_final = os.path.join(REPORTS_FOLDER, nombre_colab)
+                    
+                    # Mover directamente al directorio de reportes
+                    os.makedirs(REPORTS_FOLDER, exist_ok=True)
+                    shutil.move(ruta_colab, ruta_colab_final)
+                    logger.info(f"✅ Reporte de colaboradores movido: {nombre_colab}")
+                    
+                    # Guardar en historial
+                    try:
+                        file_size_colab = os.path.getsize(ruta_colab_final)
+                        report_colab = ReportHistory(
+                            user_id=current_user.id,
+                            report_type='colaboradores',
+                            filename=os.path.basename(ruta_colab_final),
+                            file_path=ruta_colab_final,
+                            file_size=file_size_colab
+                        )
+                        db.session.add(report_colab)
+                        db.session.commit()
+                        logger.info(f"✅ Reporte de colaboradores guardado en historial: {nombre_colab}")
+                    except Exception as e:
+                        logger.error(f"❌ Error guardando reporte de colaboradores en historial: {str(e)}")
+                        db.session.rollback()
+        
         # Limpiar archivo temporal
+                    try:
+                        os.remove(temp_colab_path)
+                    except:
+                        pass
+                else:
+                    logger.warning("⚠️ No se encontraron registros de colaboradores")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error generando reporte de colaboradores: {str(e)}")
+                # Continuar aunque falle
+        
+        # Limpiar archivo temporal original
         try:
             os.remove(archivo_path)
         except (OSError, FileNotFoundError):
-            pass  # Ignorar errores de eliminación
+            pass
         
         # Devolver el archivo generado directamente
         return send_file(

@@ -34,6 +34,15 @@
                 <div class="file-success">
                     <span id="fileName1"></span>
                 </div>
+                
+                <!-- Checkbox para reporte de colaboradores -->
+                <div style="margin: 15px 0; text-align: left;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="colaboradoresCheckbox" style="width: 18px; height: 18px; cursor: pointer;">
+                        <span style="font-size: 14px;">Generar también reporte de colaboradores (códigos 001053 y 001145)</span>
+                    </label>
+                </div>
+                
                 <button class="process-btn" onclick="processFile(1)">
                     Procesar
                 </button>
@@ -429,6 +438,10 @@ function processFile(zoneNumber) {
         
         const formData = new FormData();
         formData.append('archivo', selectedFiles1[0]);
+        
+        // Agregar estado del checkbox de colaboradores
+        const colaboradoresCheckbox = document.getElementById('colaboradoresCheckbox');
+        formData.append('incluir_colaboradores', colaboradoresCheckbox.checked ? 'true' : 'false');
         
         processReport(formData, 'reportes/procesar_antiguedad');
     } else {
