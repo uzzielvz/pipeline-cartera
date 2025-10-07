@@ -496,7 +496,7 @@ def procesar_reporte_antiguedad(archivo_path):
         
         # Crear DataFrame sin las columnas temporales de links para escritura en Excel
         df_completo_sin_links = df_completo.drop(columns=['link_texto', 'link_url'], errors='ignore')
-        
+
         # Reordenar columnas para que 'Código acreditado' sea la primera (solo en reporte completo)
         if 'Código acreditado' in df_completo_sin_links.columns:
             columnas = df_completo_sin_links.columns.tolist()
@@ -618,6 +618,18 @@ def procesar_reporte_antiguedad(archivo_path):
             
             df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, index=False, startrow=1)
             ws_informe = writer.sheets[hoja_informe]
+            
+            # *** NUEVO: Aplicar formato de texto a 'Código acreditado' para preservar ceros ***
+            if 'Código acreditado' in df_completo_sin_links.columns:
+                # Buscar la columna 'Código acreditado' en el Excel
+                for col_idx in range(1, ws_informe.max_column + 1):
+                    if ws_informe.cell(row=2, column=col_idx).value == 'Código acreditado':
+                        # Aplicar formato de texto desde fila 3 (datos) hasta el final
+                        for row in range(3, ws_informe.max_row + 1):
+                            ws_informe.cell(row=row, column=col_idx).number_format = '@'
+                        logger.info(f"✅ Formato de texto aplicado a columna 'Código acreditado' (columna {col_idx})")
+                        break
+            
             # Aplicar formato condicional a la hoja de informe completo
             aplicar_formato_condicional(ws_informe, columna_mora, len(df_completo))
             
@@ -905,8 +917,8 @@ def procesar_reporte_antiguedad(archivo_path):
             # Obtener el nombre de la hoja "Informe Completo" (fecha_actual)
             nombre_hoja_informe = hoja_informe  # Ya definido anteriormente
             
-            # Calcular el rango de la tabla "Informe Completo" (asumiendo que va desde A2 hasta el final)
-            ultima_fila_informe = len(df_completo) + 1  # +1 para incluir encabezados
+            # *** CORREGIDO: Calcular el rango de la tabla "Informe Completo" (asumiendo que va desde A2 hasta el final) ***
+            ultima_fila_informe = len(df_completo) + 2  # +2 para incluir encabezados (fila 2) + datos
             ultima_columna_informe = len(df_completo.columns)
             ultima_col_letter = get_column_letter(ultima_columna_informe)
             rango_informe = f"A$2:{ultima_col_letter}${ultima_fila_informe}"
