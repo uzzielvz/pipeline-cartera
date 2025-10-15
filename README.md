@@ -5,7 +5,6 @@
 CREDIFLEXI es una aplicación web profesional diseñada para automatizar el procesamiento de reportes de antigüedad de cartera crediticia. El sistema proporciona procesamiento automatizado de datos, filtrado de fraudes, integración de geolocalización y generación de reportes Excel profesionales con formato avanzado y estilos condicionales.
 
 ---
-
 ## Características Principales
 
 ### Funcionalidad Core

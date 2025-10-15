@@ -821,12 +821,12 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Mapeo manual basado en la estructura real del archivo
             # Según el debug anterior, las columnas están en posiciones específicas
             mapeo_manual = {
-                'ciclo': df_completo.columns[7] if len(df_completo.columns) > 7 else None,  # Unnamed: 7
-                'nombre_acreditado': df_completo.columns[8] if len(df_completo.columns) > 8 else None,  # Unnamed: 8
-                'intereses_vencidos': df_completo.columns[24] if len(df_completo.columns) > 24 else None,  # Unnamed: 24 (Saldo interés vencido)
-                'comision_vencida': df_completo.columns[25] if len(df_completo.columns) > 25 else None,  # Unnamed: 25 (Saldo comisión vencida)
-                'recargos': df_completo.columns[26] if len(df_completo.columns) > 26 else None,  # Unnamed: 26 (Saldo recargos)
-                'saldo_capital': df_completo.columns[21] if len(df_completo.columns) > 21 else None,  # Unnamed: 21 (Saldo capital)
+                'ciclo': df_completo.columns[7] if len(df_completo.columns) > 7 else None,  # Unnamed: 7 (Columna 8 Excel)
+                'nombre_acreditado': df_completo.columns[8] if len(df_completo.columns) > 8 else None,  # Unnamed: 8 (Columna 9 Excel)
+                'intereses_vencidos': df_completo.columns[25] if len(df_completo.columns) > 25 else None,  # Unnamed: 25 (Columna 26 Excel - Saldo interés vencido)
+                'comision_vencida': df_completo.columns[26] if len(df_completo.columns) > 26 else None,  # Unnamed: 26 (Columna 27 Excel - Saldo comisión vencida)
+                'recargos': df_completo.columns[27] if len(df_completo.columns) > 27 else None,  # Unnamed: 27 (Columna 28 Excel - Saldo recargos)
+                'saldo_capital': df_completo.columns[22] if len(df_completo.columns) > 22 else None,  # Unnamed: 22 (Columna 23 Excel - Saldo capital)
             }
             
             for key, columna_requerida in columnas_requeridas.items():
@@ -862,10 +862,11 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 'Saldo comisión vencida',                          # E
                 'Saldo recargos',                                  # F
                 'Saldo capital',                                   # G
-                'Intereses del próximo pago sin vencer',           # H
-                'Comisiones del próximo pago sin vencer',          # I
-                'Cantidad a liquidar',                             # J
-                'Cálculo válido hasta el próximo pago'             # K
+                'Saldo adelantado',                                # H (NUEVA COLUMNA)
+                'Intereses del próximo pago sin vencer',           # I
+                'Comisiones del próximo pago sin vencer',          # J
+                'Cantidad a liquidar',                             # K
+                'Cálculo válido hasta el próximo pago'             # L
             ]
             
             # Crear DataFrame vacío para la hoja de liquidación anticipada
@@ -898,10 +899,11 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 'E': 20,  # Saldo comisión vencida
                 'F': 15,  # Saldo recargos
                 'G': 18,  # Saldo capital
-                'H': 22,  # Intereses próximo pago
-                'I': 22,  # Comisiones próximo pago
-                'J': 20,  # Cantidad a liquidar
-                'K': 25   # Cálculo válido hasta
+                'H': 18,  # Saldo adelantado (NUEVA COLUMNA)
+                'I': 22,  # Intereses próximo pago
+                'J': 22,  # Comisiones próximo pago
+                'K': 20,  # Cantidad a liquidar
+                'L': 25   # Cálculo válido hasta
             }
             
             for col_letter, width in widths.items():
@@ -913,7 +915,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             
             # 4. Aplicar formato minimalista pero legible a todas las celdas
             # Encabezados (fila 2)
-            for col in range(1, 12):  # Columnas A a K
+            for col in range(1, 13):  # Columnas A a L
                 cell = ws_liquidacion.cell(row=2, column=col)
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 cell.font = Font(name='Arial', size=10, bold=True, color='2F4F4F')  # Azul gris oscuro
@@ -926,7 +928,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 )
             
             # Datos (fila 3)
-            for col in range(1, 12):  # Columnas A a K
+            for col in range(1, 13):  # Columnas A a L
                 cell = ws_liquidacion.cell(row=3, column=col)
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
                 cell.font = Font(name='Arial', size=10, color='2C2C2C')  # Gris oscuro
@@ -937,14 +939,14 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                     bottom=Side(style='thin', color='D3D3D3')
                 )
             
-            # 4. Aplicar relleno verde claro a celdas manuales (columnas H, I, K) con formato mejorado
-            celdas_manuales = ['H3', 'I3', 'K3']
+            # 4. Aplicar relleno verde claro a celdas manuales (columnas I, J, L) con formato mejorado
+            celdas_manuales = ['I3', 'J3', 'L3']
             for celda in celdas_manuales:
                 ws_liquidacion[celda].fill = PatternFill(start_color=COLORS['light_green'], end_color=COLORS['light_green'], fill_type='solid')
                 ws_liquidacion[celda].font = Font(name='Arial', size=10, bold=True, color='2C2C2C')  # Texto en negrita para celdas manuales
             
-            # 5. Aplicar formato de moneda a columnas D:J (4:10)
-            for col_letter in ['D', 'E', 'F', 'G', 'H', 'I', 'J']:
+            # 5. Aplicar formato de moneda a columnas D:K (4:11)
+            for col_letter in ['D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']:
                 ws_liquidacion[f'{col_letter}3'].number_format = EXCEL_CONFIG['currency_format']
             
             # 5. Formatear celda A3 (Código acreditado) para mantener ceros al inicio
@@ -954,11 +956,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Obtener el nombre de la hoja "Informe Completo" (fecha_actual)
             nombre_hoja_informe = hoja_informe  # Ya definido anteriormente
             
-            # *** CORREGIDO: Calcular el rango de la tabla "Informe Completo" (asumiendo que va desde A2 hasta el final) ***
-            ultima_fila_informe = len(df_completo) + 2  # +2 para incluir encabezados (fila 2) + datos
+            # *** CORREGIDO: Usar columnas completas en lugar de rango fijo ***
             ultima_columna_informe = len(df_completo.columns)
             ultima_col_letter = get_column_letter(ultima_columna_informe)
-            rango_informe = f"A$2:{ultima_col_letter}${ultima_fila_informe}"
+            rango_informe = f"$A:{ultima_col_letter}"
             
             logger.info(f"🔍 Debug fórmulas BUSCARV:")
             logger.info(f"   - Nombre hoja informe: '{nombre_hoja_informe}'")
@@ -994,7 +995,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 ws_liquidacion['C3'] = '""'
                 logger.warning(f"⚠️ Columna 'Nombre acreditado' no encontrada, C3 quedará vacío")
             
-            # D3: Saldo interés vencido - con manejo de valores nulos y formato numérico usando VLOOKUP (inglés)
+            # D3: Saldo interés vencido
             if 'intereses_vencidos' in columnas_mapeadas:
                 col_intereses_index = df_completo.columns.get_loc(columnas_mapeadas['intereses_vencidos']) + 1
                 formula_intereses = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_intereses_index},FALSE),0)"
@@ -1004,7 +1005,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 ws_liquidacion['D3'] = '0'
                 logger.warning(f"⚠️ Columna 'Intereses vencidos' no encontrada, D3 = 0")
             
-            # E3: Saldo comisión vencida - con manejo de valores nulos y formato numérico usando VLOOKUP (inglés)
+            # E3: Saldo comisión vencida
             if 'comision_vencida' in columnas_mapeadas:
                 col_comision_index = df_completo.columns.get_loc(columnas_mapeadas['comision_vencida']) + 1
                 formula_comision = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_comision_index},FALSE),0)"
@@ -1014,7 +1015,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 ws_liquidacion['E3'] = '0'
                 logger.warning(f"⚠️ Columna 'Comisión vencida' no encontrada, E3 = 0")
             
-            # F3: Saldo recargos - con manejo de valores nulos y formato numérico usando VLOOKUP (inglés)
+            # F3: Saldo recargos
             if 'recargos' in columnas_mapeadas:
                 col_recargos_index = df_completo.columns.get_loc(columnas_mapeadas['recargos']) + 1
                 formula_recargos = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_recargos_index},FALSE),0)"
@@ -1024,7 +1025,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 ws_liquidacion['F3'] = '0'
                 logger.warning(f"⚠️ Columna 'Recargos' no encontrada, F3 = 0")
             
-            # G3: Saldo capital - con manejo de valores nulos y formato numérico usando VLOOKUP (inglés)
+            # G3: Saldo capital
             if 'saldo_capital' in columnas_mapeadas:
                 col_capital_index = df_completo.columns.get_loc(columnas_mapeadas['saldo_capital']) + 1
                 formula_capital = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},{col_capital_index},FALSE),0)"
@@ -1034,8 +1035,16 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 ws_liquidacion['G3'] = '0'
                 logger.warning(f"⚠️ Columna 'Saldo capital' no encontrada, G3 = 0")
             
-            # 7. Establecer fórmula de suma en columna J3 para "Cantidad a liquidar"
-            ws_liquidacion['J3'] = '=SUM(D3:I3)'
+            # H3: Saldo adelantado (NUEVA COLUMNA) - Buscar en columna específica del informe
+            # Esta columna busca directamente en una posición fija según el archivo del jefe
+            formula_adelantado = f"=IFERROR(VLOOKUP(A3,'{nombre_hoja_informe}'!{rango_informe},52,FALSE),0)"
+            ws_liquidacion['H3'] = formula_adelantado
+            logger.info(f"✅ Fórmula H3 (Saldo adelantado): {formula_adelantado}")
+            
+            # 7. Establecer fórmula de suma en columna K3 para "Cantidad a liquidar"
+            # Suma: Saldo interés vencido + Saldo comisión + Saldo recargos + Saldo capital + Intereses próximo pago + Comisiones próximo pago
+            # Resta: Saldo adelantado
+            ws_liquidacion['K3'] = '=SUM(D3:G3,I3:J3)-H3'
             
             # 8. NO usar crear_tabla_excel para mantener el diseño personalizado minimalista
             

@@ -1,0 +1,82 @@
+﻿================================================================
+    CREDIFLEXI - Sistema de Automatizacion de Reportes
+================================================================
+
+INSTRUCCIONES DE USO:
+
+1. Haz doble clic en CREDIFLEXI.exe
+2. Espera a que se abra el navegador automaticamente (2 segundos)
+3. Si no se abre automaticamente, ve a: http://127.0.0.1:5000
+
+CREDENCIALES POR DEFECTO:
+
+   Administrador:
+   - Usuario: admin
+   - Contrasena: admin123
+   - Permisos: Generar y consultar reportes, acceso al dashboard
+
+   Consultor:
+   - Usuario: consultor
+   - Contrasena: consultor123
+   - Permisos: Solo consultar reportes existentes
+
+IMPORTANTE:
+
+- NO cierres la ventana de consola negra mientras uses el sistema
+- Para detener el servidor: Presiona CTRL+C en la consola
+- Los reportes se guardan en: static/downloads/reports/
+- La base de datos se encuentra en: instance/crediflexi.db
+
+CARACTERISTICAS:
+
+   Reporte Individual:
+   - Procesa archivos Excel de antiguedad de cartera
+   - Genera reporte completo con multiples hojas
+   - Opcion de generar reporte de colaboradores separado
+   - Filtrado automatico de fraudes
+
+   Reporte Grupal:
+   - Integra 5 archivos Excel diferentes
+   - Deteccion automatica del tipo de archivo
+   - Reporte consolidado
+
+   Dashboard:
+   - Historial completo de reportes generados
+   - Filtros por tipo de reporte
+   - Descarga de reportes anteriores
+   - Eliminacion de reportes (solo admin)
+
+REQUISITOS DEL SISTEMA:
+
+- Windows 10 o superior
+- 4 GB de RAM minimo (8 GB recomendado)
+- 500 MB de espacio en disco
+- Navegador web (Chrome, Firefox, Edge)
+
+SOLUCION DE PROBLEMAS:
+
+   El navegador no se abre automaticamente:
+   - Abre manualmente: http://127.0.0.1:5000
+
+   Error "Puerto 5000 en uso":
+   - Cierra otras aplicaciones que usen el puerto 5000
+   - O reinicia tu computadora
+
+   El archivo .exe no inicia:
+   - Verifica que tu antivirus no lo este bloqueando
+   - Ejecuta como administrador (clic derecho > Ejecutar como admin)
+
+   Error al procesar archivo Excel:
+   - Verifica que el archivo tenga el formato correcto
+   - Asegurate de que el archivo no este abierto en Excel
+
+SOPORTE TECNICO:
+
+Para soporte o reportar problemas, contacta al administrador
+del sistema o al equipo de desarrollo.
+
+VERSION: 2.0 (Octubre 2025)
+
+================================================================
+            CREDIFLEXI - Todos los derechos reservados
+================================================================
