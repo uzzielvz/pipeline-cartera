@@ -11,7 +11,7 @@ from openpyxl.styles import numbers
 import os
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 import urllib.parse
 from config import (
@@ -637,7 +637,14 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 
 
         # --- PASO 6: Generar el archivo Excel final ---
-        fecha_actual = datetime.now().strftime("%d%m%Y")
+        # Calcular fecha del reporte: día anterior, excepto lunes que usa viernes
+        hoy = datetime.now()
+        if hoy.weekday() == 0:  # Lunes (0 = lunes)
+            fecha_reporte = hoy - timedelta(days=3)  # Viernes anterior
+        else:
+            fecha_reporte = hoy - timedelta(days=1)  # Día anterior
+        
+        fecha_actual = fecha_reporte.strftime("%d%m%Y")
         nombre_archivo_salida = f'ReportedeAntigüedad_{fecha_actual}.xlsx'
         ruta_salida = os.path.join('uploads', nombre_archivo_salida)
         
