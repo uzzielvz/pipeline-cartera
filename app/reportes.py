@@ -259,6 +259,62 @@ def escribir_hipervinculo_excel(worksheet, row, col, texto, url):
     cell.hyperlink = url
     cell.font = Font(color="0000FF", underline="single")
 
+def generar_concepto_deposito(df):
+    """
+    Genera la columna 'Concepto Depósito' con formato: 1 + código_acreditado(6 dígitos) + ciclo(2 dígitos)
+    Ejemplo: 100100401 (1 + 001004 + 01)
+    """
+    if 'Código acreditado' not in df.columns or 'Ciclo' not in df.columns:
+        logger.warning("⚠️ No se puede generar 'Concepto Depósito': faltan columnas 'Código acreditado' o 'Ciclo'")
+        return pd.Series([''] * len(df))
+    
+    # Asegurar que Código acreditado tenga 6 dígitos y Ciclo tenga 2 dígitos
+    codigo = df['Código acreditado'].astype(str).str.strip().str.zfill(6)
+    ciclo = df['Ciclo'].astype(str).str.strip().str.zfill(2)
+    
+    # Generar concepto: 1 + código(6) + ciclo(2) = 9 dígitos total
+    concepto_deposito = '1' + codigo + ciclo
+    
+    return concepto_deposito
+
+def agregar_columna_concepto_deposito(df):
+    """
+    Agrega la columna 'Concepto Depósito' después de 'Forma de entrega' si existe,
+    o al final si no existe.
+    """
+    concepto = generar_concepto_deposito(df)
+    
+    # Buscar la columna 'Forma de entrega'
+    columna_forma_entrega = None
+    for col in df.columns:
+        if 'forma de entrega' in str(col).lower() or 'forma entrega' in str(col).lower():
+            columna_forma_entrega = col
+            break
+    
+    if columna_forma_entrega and columna_forma_entrega in df.columns:
+        # Insertar después de 'Forma de entrega'
+        forma_index = df.columns.get_loc(columna_forma_entrega)
+        df.insert(forma_index + 1, 'Concepto Depósito', concepto)
+        logger.info(f"✅ Columna 'Concepto Depósito' agregada después de '{columna_forma_entrega}'")
+    else:
+        # Agregar al final si no se encuentra 'Forma de entrega'
+        df['Concepto Depósito'] = concepto
+        logger.info("✅ Columna 'Concepto Depósito' agregada al final (no se encontró 'Forma de entrega')")
+    
+    return df
+
+def aplicar_formato_texto_concepto_deposito(worksheet, df):
+    """
+    Aplica formato de texto a la columna 'Concepto Depósito' para preservar ceros a la izquierda
+    """
+    if 'Concepto Depósito' in df.columns:
+        for col_idx in range(1, worksheet.max_column + 1):
+            if worksheet.cell(row=2, column=col_idx).value == 'Concepto Depósito':
+                for row in range(3, worksheet.max_row + 1):
+                    worksheet.cell(row=row, column=col_idx).number_format = '@'
+                logger.info(f"✅ Formato de texto aplicado a columna 'Concepto Depósito' (columna {col_idx})")
+                break
+
 def aplicar_formato_final(worksheet, df, es_hoja_mora=False):
     """Autoajuste de columnas, formato de moneda, fecha corta, y formatos especiales."""
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -666,10 +722,13 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             else:
                 logger.info(f"✅ Informe Completo FINAL sin columnas PAR")
             
+            # Agregar columna 'Concepto Depósito' al informe completo
+            df_completo_sin_links = agregar_columna_concepto_deposito(df_completo_sin_links.copy())
+            
             df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, index=False, startrow=1)
             ws_informe = writer.sheets[hoja_informe]
             
-            # *** NUEVO: Aplicar formato de texto a 'Código acreditado' para preservar ceros ***
+            # *** NUEVO: Aplicar formato de texto a 'Código acreditado' y 'Concepto Depósito' para preservar ceros ***
             if 'Código acreditado' in df_completo_sin_links.columns:
                 # Buscar la columna 'Código acreditado' en el Excel
                 for col_idx in range(1, ws_informe.max_column + 1):
@@ -679,6 +738,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                             ws_informe.cell(row=row, column=col_idx).number_format = '@'
                         logger.info(f"✅ Formato de texto aplicado a columna 'Código acreditado' (columna {col_idx})")
                         break
+            
+            # Aplicar formato de texto a 'Concepto Depósito'
+            aplicar_formato_texto_concepto_deposito(ws_informe, df_completo_sin_links)
             
             # Aplicar formato condicional a la hoja de informe completo
             aplicar_formato_condicional(ws_informe, columna_mora, len(df_completo))
@@ -717,6 +779,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Crear DataFrame sin las columnas temporales de links para escritura en Excel
             df_mora_sin_links = df_mora.drop(columns=['link_texto', 'link_url'], errors='ignore')
             
+            # Agregar columna 'Concepto Depósito' a la hoja Mora
+            df_mora_sin_links = agregar_columna_concepto_deposito(df_mora_sin_links.copy())
+            
             df_mora_sin_links.to_excel(writer, sheet_name='Mora', index=False, startrow=1)
             
             # Aplicar formato condicional
@@ -734,6 +799,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                         texto = row['link_texto']
                         url = row['link_url']
                         escribir_hipervinculo_excel(worksheet_mora, row_num, link_col, texto, url)
+            
+            # Aplicar formato de texto a 'Concepto Depósito'
+            aplicar_formato_texto_concepto_deposito(worksheet_mora, df_mora_sin_links)
             
             # Crear tabla formal de Excel para la hoja Mora y formato final
             crear_tabla_excel(worksheet_mora, df_mora_sin_links, 'Mora', incluir_columnas_adicionales=True)
@@ -759,11 +827,17 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Crear DataFrame sin las columnas temporales de links para escritura en Excel
                 df_saldo_vencido_sin_links = df_saldo_vencido.drop(columns=['link_texto', 'link_url'], errors='ignore')
                 
+                # Agregar columna 'Concepto Depósito' a la hoja Cuentas con saldo vencido
+                df_saldo_vencido_sin_links = agregar_columna_concepto_deposito(df_saldo_vencido_sin_links.copy())
+                
                 df_saldo_vencido_sin_links.to_excel(writer, sheet_name='Cuentas con saldo vencido', index=False, startrow=1)
                 
                 # NO aplicar formato condicional para la hoja "Cuentas con saldo vencido"
                 worksheet_saldo = writer.sheets['Cuentas con saldo vencido']
                 # aplicar_formato_condicional(worksheet_saldo, columna_mora, len(df_saldo_vencido))  # Comentado: no queremos colores en esta hoja
+                
+                # Aplicar formato de texto a 'Concepto Depósito'
+                aplicar_formato_texto_concepto_deposito(worksheet_saldo, df_saldo_vencido_sin_links)
                 
                 # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
                 if 'Link de Geolocalización' in df_saldo_vencido_sin_links.columns:
@@ -1099,6 +1173,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Crear DataFrame sin las columnas temporales de links para escritura en Excel
                 df_coord_sin_links = df_coord.drop(columns=['link_texto', 'link_url'], errors='ignore')
                 
+                # Agregar columna 'Concepto Depósito' a la hoja de coordinación
+                df_coord_sin_links = agregar_columna_concepto_deposito(df_coord_sin_links.copy())
+                
                 df_coord_sin_links.to_excel(writer, sheet_name=sheet_name, index=False, startrow=1)
                 
                 # Aplicar formato condicional
@@ -1117,6 +1194,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                             url = row['link_url']
                             escribir_hipervinculo_excel(worksheet_coord, row_num, link_col, texto, url)
 
+                # Aplicar formato de texto a 'Concepto Depósito'
+                aplicar_formato_texto_concepto_deposito(worksheet_coord, df_coord_sin_links)
+                
                 # Crear tabla formal de Excel para la hoja de coordinación y formato final
                 crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name, incluir_columnas_adicionales=False)
                 aplicar_formato_final(worksheet_coord, df_coord_sin_links, es_hoja_mora=False)
