@@ -509,6 +509,12 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         # Limpiar números de teléfono
         df_filtrado = clean_phone_numbers(df_filtrado)
         
+        # Formatear columna Ciclo a 2 dígitos (01, 02, etc.)
+        if 'Ciclo' in df_filtrado.columns:
+            # Convertir a numérico primero, luego a string con 2 dígitos, rellenando con ceros a la izquierda
+            df_filtrado['Ciclo'] = pd.to_numeric(df_filtrado['Ciclo'], errors='coerce').fillna(0).astype(int).astype(str).str.zfill(2)
+            logger.info("✅ Columna 'Ciclo' formateada a 2 dígitos (01, 02, etc.)")
+        
         # Añadir enlaces de geolocalización
         df_filtrado = add_geolocation_links(df_filtrado, columna_geolocalizacion)
         
