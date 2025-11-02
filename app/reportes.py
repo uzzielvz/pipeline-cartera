@@ -281,8 +281,38 @@ def agregar_columna_concepto_deposito(df):
     """
     Agrega la columna 'Concepto Depósito' después de 'Forma de entrega' si existe,
     o al final si no existe.
+    Solo asigna valor al registro con el ciclo mayor cuando hay duplicados del mismo código.
     """
-    concepto = generar_concepto_deposito(df)
+    # Verificar que existan las columnas necesarias
+    if 'Código acreditado' not in df.columns or 'Ciclo' not in df.columns:
+        logger.warning("⚠️ No se puede generar 'Concepto Depósito': faltan columnas 'Código acreditado' o 'Ciclo'")
+        concepto = pd.Series([''] * len(df))
+    else:
+        # Asegurar que Código acreditado tenga 6 dígitos y Ciclo tenga 2 dígitos
+        codigo = df['Código acreditado'].astype(str).str.strip().str.zfill(6)
+        ciclo_str = df['Ciclo'].astype(str).str.strip().str.zfill(2)
+        ciclo_num = pd.to_numeric(df['Ciclo'], errors='coerce').fillna(0)
+        
+        # Generar concepto temporalmente
+        concepto_temporal = '1' + codigo + ciclo_str
+        
+        # Para cada código, identificar la fila con el ciclo mayor
+        concepto = pd.Series([''] * len(df))
+        
+        for codigo_unico in codigo.unique():
+            # Encontrar todas las filas con este código
+            mascara = codigo == codigo_unico
+            indices = df.index[mascara]
+            
+            if len(indices) > 1:
+                # Hay duplicados: encontrar el índice con el ciclo mayor
+                ciclos_valores = ciclo_num.loc[indices]
+                indice_ciclo_mayor = ciclos_valores.idxmax()
+                concepto.loc[indice_ciclo_mayor] = concepto_temporal.loc[indice_ciclo_mayor]
+                logger.info(f"🔍 Código {codigo_unico}: {len(indices)} duplicados, asignado a ciclo {ciclo_str.loc[indice_ciclo_mayor]}")
+            else:
+                # No hay duplicados: asignar normalmente
+                concepto.loc[indices[0]] = concepto_temporal.loc[indices[0]]
     
     # Buscar la columna 'Forma de entrega'
     columna_forma_entrega = None
