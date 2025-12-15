@@ -333,6 +333,65 @@ def agregar_columna_concepto_deposito(df):
     
     return df
 
+def agregar_columnas_riesgo_y_mora(df):
+    """
+    Agrega las columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA' 
+    después de 'Concepto Depósito' si existe, o al final si no existe.
+    
+    Fórmulas:
+    - Saldo riesgo capital = IF(Días de mora > 0, Saldo capital, 0)
+    - Saldo riesgo total = IF(Días de mora > 0, Saldo total, 0)
+    - % MORA = Saldo vencido / Saldo total
+    """
+    # Verificar que existan las columnas necesarias
+    columnas_requeridas = ['Días de mora', 'Saldo capital', 'Saldo total', 'Saldo vencido']
+    columnas_faltantes = [col for col in columnas_requeridas if col not in df.columns]
+    
+    if columnas_faltantes:
+        logger.warning(f"⚠️ No se pueden generar columnas de riesgo: faltan columnas {columnas_faltantes}")
+        # Crear columnas vacías
+        df['Saldo riesgo capital'] = 0
+        df['Saldo riesgo total'] = 0
+        df['% MORA'] = 0
+        return df
+    
+    # Calcular Saldo riesgo capital = IF(Días de mora > 0, Saldo capital, 0)
+    saldo_riesgo_capital = df.apply(
+        lambda row: row['Saldo capital'] if pd.notna(row['Días de mora']) and row['Días de mora'] > 0 else 0,
+        axis=1
+    )
+    
+    # Calcular Saldo riesgo total = IF(Días de mora > 0, Saldo total, 0)
+    saldo_riesgo_total = df.apply(
+        lambda row: row['Saldo total'] if pd.notna(row['Días de mora']) and row['Días de mora'] > 0 else 0,
+        axis=1
+    )
+    
+    # Calcular % MORA = Saldo vencido / Saldo total
+    pct_mora = df.apply(
+        lambda row: (row['Saldo vencido'] / row['Saldo total']) 
+                    if pd.notna(row['Saldo total']) and row['Saldo total'] != 0 
+                    else 0,
+        axis=1
+    )
+    
+    # Buscar la columna 'Concepto Depósito' para insertar después
+    if 'Concepto Depósito' in df.columns:
+        concepto_index = df.columns.get_loc('Concepto Depósito')
+        # Insertar las 3 columnas después de 'Concepto Depósito'
+        df.insert(concepto_index + 1, 'Saldo riesgo capital', saldo_riesgo_capital)
+        df.insert(concepto_index + 2, 'Saldo riesgo total', saldo_riesgo_total)
+        df.insert(concepto_index + 3, '% MORA', pct_mora)
+        logger.info("✅ Columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA' agregadas después de 'Concepto Depósito'")
+    else:
+        # Agregar al final si no se encuentra 'Concepto Depósito'
+        df['Saldo riesgo capital'] = saldo_riesgo_capital
+        df['Saldo riesgo total'] = saldo_riesgo_total
+        df['% MORA'] = pct_mora
+        logger.info("✅ Columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA' agregadas al final")
+    
+    return df
+
 def aplicar_formato_texto_concepto_deposito(worksheet, df):
     """
     Aplica formato de texto a la columna 'Concepto Depósito' para preservar ceros a la izquierda
@@ -343,6 +402,19 @@ def aplicar_formato_texto_concepto_deposito(worksheet, df):
                 for row in range(3, worksheet.max_row + 1):
                     worksheet.cell(row=row, column=col_idx).number_format = '@'
                 logger.info(f"✅ Formato de texto aplicado a columna 'Concepto Depósito' (columna {col_idx})")
+                break
+
+def aplicar_formato_porcentaje_mora(worksheet, df):
+    """
+    Aplica formato de porcentaje a la columna '% MORA' (formato de porcentaje 0-100%)
+    Excel automáticamente multiplicará los valores (que están entre 0-1) por 100 para mostrarlos como porcentaje
+    """
+    if '% MORA' in df.columns:
+        for col_idx in range(1, worksheet.max_column + 1):
+            if worksheet.cell(row=2, column=col_idx).value == '% MORA':
+                for row in range(3, worksheet.max_row + 1):
+                    worksheet.cell(row=row, column=col_idx).number_format = '0.00%'  # Formato de porcentaje con 2 decimales
+                logger.info(f"✅ Formato de porcentaje aplicado a columna '% MORA' (columna {col_idx})")
                 break
 
 def aplicar_formato_final(worksheet, df, es_hoja_mora=False):
@@ -755,6 +827,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Agregar columna 'Concepto Depósito' al informe completo
             df_completo_sin_links = agregar_columna_concepto_deposito(df_completo_sin_links.copy())
             
+            # Agregar columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA'
+            df_completo_sin_links = agregar_columnas_riesgo_y_mora(df_completo_sin_links.copy())
+            
             df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, index=False, startrow=1)
             ws_informe = writer.sheets[hoja_informe]
             
@@ -771,6 +846,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             
             # Aplicar formato de texto a 'Concepto Depósito'
             aplicar_formato_texto_concepto_deposito(ws_informe, df_completo_sin_links)
+            
+            # Aplicar formato decimal a '% MORA'
+            aplicar_formato_porcentaje_mora(ws_informe, df_completo_sin_links)
             
             # Aplicar formato condicional a la hoja de informe completo
             aplicar_formato_condicional(ws_informe, columna_mora, len(df_completo))
@@ -812,6 +890,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Agregar columna 'Concepto Depósito' a la hoja Mora
             df_mora_sin_links = agregar_columna_concepto_deposito(df_mora_sin_links.copy())
             
+            # Agregar columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA'
+            df_mora_sin_links = agregar_columnas_riesgo_y_mora(df_mora_sin_links.copy())
+            
             df_mora_sin_links.to_excel(writer, sheet_name='Mora', index=False, startrow=1)
             
             # Aplicar formato condicional
@@ -832,6 +913,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             
             # Aplicar formato de texto a 'Concepto Depósito'
             aplicar_formato_texto_concepto_deposito(worksheet_mora, df_mora_sin_links)
+            
+            # Aplicar formato decimal a '% MORA'
+            aplicar_formato_porcentaje_mora(worksheet_mora, df_mora_sin_links)
             
             # Crear tabla formal de Excel para la hoja Mora y formato final
             crear_tabla_excel(worksheet_mora, df_mora_sin_links, 'Mora', incluir_columnas_adicionales=True)
@@ -860,6 +944,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Agregar columna 'Concepto Depósito' a la hoja Cuentas con saldo vencido
                 df_saldo_vencido_sin_links = agregar_columna_concepto_deposito(df_saldo_vencido_sin_links.copy())
                 
+                # Agregar columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA'
+                df_saldo_vencido_sin_links = agregar_columnas_riesgo_y_mora(df_saldo_vencido_sin_links.copy())
+                
                 df_saldo_vencido_sin_links.to_excel(writer, sheet_name='Cuentas con saldo vencido', index=False, startrow=1)
                 
                 # NO aplicar formato condicional para la hoja "Cuentas con saldo vencido"
@@ -868,6 +955,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 
                 # Aplicar formato de texto a 'Concepto Depósito'
                 aplicar_formato_texto_concepto_deposito(worksheet_saldo, df_saldo_vencido_sin_links)
+                
+                # Aplicar formato decimal a '% MORA'
+                aplicar_formato_porcentaje_mora(worksheet_saldo, df_saldo_vencido_sin_links)
                 
                 # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
                 if 'Link de Geolocalización' in df_saldo_vencido_sin_links.columns:
@@ -1206,6 +1296,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Agregar columna 'Concepto Depósito' a la hoja de coordinación
                 df_coord_sin_links = agregar_columna_concepto_deposito(df_coord_sin_links.copy())
                 
+                # Agregar columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA'
+                df_coord_sin_links = agregar_columnas_riesgo_y_mora(df_coord_sin_links.copy())
+                
                 df_coord_sin_links.to_excel(writer, sheet_name=sheet_name, index=False, startrow=1)
                 
                 # Aplicar formato condicional
@@ -1226,6 +1319,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
 
                 # Aplicar formato de texto a 'Concepto Depósito'
                 aplicar_formato_texto_concepto_deposito(worksheet_coord, df_coord_sin_links)
+                
+                # Aplicar formato decimal a '% MORA'
+                aplicar_formato_porcentaje_mora(worksheet_coord, df_coord_sin_links)
                 
                 # Crear tabla formal de Excel para la hoja de coordinación y formato final
                 crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name, incluir_columnas_adicionales=False)
