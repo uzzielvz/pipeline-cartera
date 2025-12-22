@@ -1324,6 +1324,41 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                             cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
                             cell.border = Border()  # Sin bordes
                 
+                # LIMPIEZA FINAL: Asegurar que TODAS las celdas fuera del área estén blancas sin bordes
+                # Esto se hace al final para evitar que otros formatos sobrescriban
+                # Área principal: filas 5-6 (encabezados) y filas 11 hasta ultima_fila_con_datos (datos)
+                # Columnas: A-H (1-8) y J hasta ultima_col_con_datos (10+)
+                
+                # Limpiar TODAS las celdas fuera del área principal (hacerlo al final)
+                for row in range(1, ws_x_coord.max_row + 1):
+                    for col in range(1, ws_x_coord.max_column + 1):
+                        # Determinar si la celda está dentro del área principal
+                        en_area_principal = False
+                        
+                        # Fila 5: Solo PAR (J5:O5) está en el área
+                        if row == 5:
+                            if col >= 10 and col <= 15:  # J-O
+                                en_area_principal = True
+                        
+                        # Fila 6: Columnas A-H y J-S están en el área
+                        elif row == 6:
+                            if (col >= 1 and col <= 8) or (col >= 10 and col <= 19):  # A-H o J-S
+                                en_area_principal = True
+                        
+                        # Filas 11+: Columnas A-H y J hasta ultima_col_con_datos están en el área
+                        elif row >= 11 and row <= ultima_fila_con_datos:
+                            if (col >= 1 and col <= 8) or (col >= 10 and col <= ultima_col_con_datos):
+                                en_area_principal = True
+                        
+                        # Si NO está en el área principal, limpiar completamente
+                        if not en_area_principal:
+                            cell = ws_x_coord.cell(row=row, column=col)
+                            cell.value = None
+                            cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                            cell.border = Border()  # Sin bordes
+                            cell.font = Font()  # Resetear fuente
+                            cell.alignment = Alignment()  # Resetear alineación
+                
                 logger.info("✅ Hoja 'X_Coordinación' creada exitosamente como PRIMERA HOJA")
             else:
                 logger.warning("⚠️ No se pudo crear la hoja 'X_Coordinación' (DataFrame vacío)")
