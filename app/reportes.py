@@ -392,6 +392,195 @@ def agregar_columnas_riesgo_y_mora(df):
     
     return df
 
+def crear_hoja_x_coordinacion(df_completo):
+    """
+    Crea la hoja 'X_Coordinación' con datos agregados por coordinación.
+    
+    Estructura:
+    - Filas 1-4: Vacías
+    - Fila 5: Solo "PAR" en columna 11
+    - Fila 6: Encabezados principales (Coordinación, Cantidad Prestada, etc.)
+    - Fila 7: Encabezados de rangos de días (Etiquetas de fila, 0, 7, 15, 30, 60, 90, Mayor_90, etc.)
+    - Fila 8+: Datos por coordinación
+    - Última fila: Total general
+    
+    Args:
+        df_completo: DataFrame completo con todos los datos procesados
+        
+    Returns:
+        DataFrame con la estructura de la hoja X_Coordinación
+    """
+    logger.info("Creando hoja X_Coordinación...")
+    
+    # Verificar columnas requeridas
+    columna_coordinacion = COLUMN_MAPPING.get('coordinacion', 'Coordinación')
+    columnas_requeridas = [
+        columna_coordinacion,
+        'Cantidad Prestada',
+        'Saldo capital',
+        'Saldo vencido',
+        'Saldo total',
+        'Saldo riesgo capital',
+        'Saldo riesgo total',
+        '% MORA',
+        'Días de mora'
+    ]
+    
+    # Verificar y calcular columnas de riesgo si no existen
+    if 'Saldo riesgo capital' not in df_completo.columns:
+        logger.info("🔍 Calculando 'Saldo riesgo capital' (no existe en df_completo)")
+        df_completo['Saldo riesgo capital'] = df_completo.apply(
+            lambda row: row['Saldo capital'] if pd.notna(row.get('Días de mora', 0)) and row.get('Días de mora', 0) > 0 else 0,
+            axis=1
+        )
+    
+    if 'Saldo riesgo total' not in df_completo.columns:
+        logger.info("🔍 Calculando 'Saldo riesgo total' (no existe en df_completo)")
+        df_completo['Saldo riesgo total'] = df_completo.apply(
+            lambda row: row['Saldo total'] if pd.notna(row.get('Días de mora', 0)) and row.get('Días de mora', 0) > 0 else 0,
+            axis=1
+        )
+    
+    if '% MORA' not in df_completo.columns:
+        logger.info("🔍 Calculando '% MORA' (no existe en df_completo)")
+        df_completo['% MORA'] = df_completo.apply(
+            lambda row: (row['Saldo vencido'] / row['Saldo total']) 
+                        if pd.notna(row.get('Saldo total', 0)) and row.get('Saldo total', 0) != 0 
+                        else 0,
+            axis=1
+        )
+    
+    # Verificar columnas requeridas después de calcular las que faltaban
+    columnas_faltantes = [col for col in columnas_requeridas if col not in df_completo.columns]
+    if columnas_faltantes:
+        logger.warning(f"⚠️ Columnas faltantes para X_Coordinación después de calcular: {columnas_faltantes}")
+        logger.warning(f"🔍 Columnas disponibles en df_completo: {list(df_completo.columns)[:30]}")
+        logger.warning(f"🔍 Total columnas: {len(df_completo.columns)}")
+        # Crear DataFrame vacío con estructura mínima
+        return pd.DataFrame()
+    
+    logger.info(f"✅ Todas las columnas requeridas están presentes. Total registros: {len(df_completo)}")
+    
+    # Agrupar por Coordinación y calcular agregaciones
+    grupo = df_completo.groupby(columna_coordinacion, dropna=False).agg({
+        'Cantidad Prestada': 'sum',
+        'Saldo capital': 'sum',
+        'Saldo vencido': 'sum',
+        'Saldo total': 'sum',
+        'Saldo riesgo capital': 'sum',
+        'Saldo riesgo total': 'sum',
+        '% MORA': 'mean'  # Promedio del porcentaje (se recalculará después)
+    }).reset_index()
+    
+    # Calcular % MORA correcto (promedio ponderado o recálculo)
+    # % MORA = Saldo vencido / Saldo total (por coordinación)
+    grupo['% MORA'] = grupo.apply(
+        lambda row: (row['Saldo vencido'] / row['Saldo total']) 
+                    if pd.notna(row['Saldo total']) and row['Saldo total'] != 0 
+                    else 0,
+        axis=1
+    )
+    
+    # Calcular rangos de días de mora para cada coordinación
+    def calcular_rangos_mora(df_coord, columna_mora='Días de mora', columna_riesgo='Saldo riesgo total'):
+        """Calcula la suma de Saldo riesgo total por rangos de días de mora"""
+        rangos = {
+            '0': 0,
+            '1-7': 0,
+            '8-15': 0,
+            '16-30': 0,
+            '31-60': 0,
+            '61-90': 0,
+            'Mayor_90': 0
+        }
+        
+        if columna_mora not in df_coord.columns or columna_riesgo not in df_coord.columns:
+            return rangos
+        
+        for idx, row in df_coord.iterrows():
+            dias_mora = row[columna_mora] if pd.notna(row[columna_mora]) else 0
+            saldo_riesgo = row[columna_riesgo] if pd.notna(row[columna_riesgo]) else 0
+            
+            if dias_mora == 0:
+                rangos['0'] += saldo_riesgo
+            elif 1 <= dias_mora <= 7:
+                rangos['1-7'] += saldo_riesgo
+            elif 8 <= dias_mora <= 15:
+                rangos['8-15'] += saldo_riesgo
+            elif 16 <= dias_mora <= 30:
+                rangos['16-30'] += saldo_riesgo
+            elif 31 <= dias_mora <= 60:
+                rangos['31-60'] += saldo_riesgo
+            elif 61 <= dias_mora <= 90:
+                rangos['61-90'] += saldo_riesgo
+            else:
+                rangos['Mayor_90'] += saldo_riesgo
+        
+        return rangos
+    
+    # Calcular rangos para cada coordinación
+    rangos_por_coord = []
+    for coord in grupo[columna_coordinacion]:
+        df_coord = df_completo[df_completo[columna_coordinacion] == coord]
+        rangos = calcular_rangos_mora(df_coord)
+        rangos_por_coord.append(rangos)
+    
+    # Agregar columnas de rangos al grupo
+    grupo['Rango_0'] = [r['0'] for r in rangos_por_coord]
+    grupo['Rango_1-7'] = [r['1-7'] for r in rangos_por_coord]
+    grupo['Rango_8-15'] = [r['8-15'] for r in rangos_por_coord]
+    grupo['Rango_16-30'] = [r['16-30'] for r in rangos_por_coord]
+    grupo['Rango_31-60'] = [r['31-60'] for r in rangos_por_coord]
+    grupo['Rango_61-90'] = [r['61-90'] for r in rangos_por_coord]
+    grupo['Rango_Mayor_90'] = [r['Mayor_90'] for r in rangos_por_coord]
+    
+    # Calcular total general
+    total_general = {
+        columna_coordinacion: 'Total',
+        'Cantidad Prestada': grupo['Cantidad Prestada'].sum(),
+        'Saldo capital': grupo['Saldo capital'].sum(),
+        'Saldo vencido': grupo['Saldo vencido'].sum(),
+        'Saldo total': grupo['Saldo total'].sum(),
+        'Saldo riesgo capital': grupo['Saldo riesgo capital'].sum(),
+        'Saldo riesgo total': grupo['Saldo riesgo total'].sum(),
+        '% MORA': (grupo['Saldo vencido'].sum() / grupo['Saldo total'].sum()) 
+                  if grupo['Saldo total'].sum() != 0 else 0,
+        'Rango_0': grupo['Rango_0'].sum(),
+        'Rango_1-7': grupo['Rango_1-7'].sum(),
+        'Rango_8-15': grupo['Rango_8-15'].sum(),
+        'Rango_16-30': grupo['Rango_16-30'].sum(),
+        'Rango_31-60': grupo['Rango_31-60'].sum(),
+        'Rango_61-90': grupo['Rango_61-90'].sum(),
+        'Rango_Mayor_90': grupo['Rango_Mayor_90'].sum()
+    }
+    
+    # Crear DataFrame final con estructura específica
+    # Necesitamos crear un DataFrame que se escriba empezando en fila 8
+    # Las filas 1-7 se escribirán manualmente en Excel
+    
+    # Preparar datos para escribir (sin las filas vacías iniciales)
+    df_resultado = grupo.copy()
+    
+    # Renombrar columnas para que coincidan con el formato esperado
+    df_resultado = df_resultado.rename(columns={
+        columna_coordinacion: 'Coordinación',
+        'Rango_0': 'Rango_0',
+        'Rango_1-7': 'Rango_1-7',
+        'Rango_8-15': 'Rango_8-15',
+        'Rango_16-30': 'Rango_16-30',
+        'Rango_31-60': 'Rango_31-60',
+        'Rango_61-90': 'Rango_61-90',
+        'Rango_Mayor_90': 'Rango_Mayor_90'
+    })
+    
+    # Agregar fila de total general
+    fila_total = pd.DataFrame([total_general])
+    df_resultado = pd.concat([df_resultado, fila_total], ignore_index=True)
+    
+    logger.info(f"✅ Hoja X_Coordinación creada con {len(grupo)} coordinaciones + 1 total")
+    
+    return df_resultado
+
 def aplicar_formato_texto_concepto_deposito(worksheet, df):
     """
     Aplica formato de texto a la columna 'Concepto Depósito' para preservar ceros a la izquierda
@@ -1270,6 +1459,118 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # 11. Instrucciones removidas para diseño más limpio
             
             logger.info("✅ Hoja 'Liquidación anticipada' creada")
+
+            # --- PASO 6.1.3: Crear hoja "X_Coordinación" ---
+            logger.info("Creando hoja 'X_Coordinación'...")
+            try:
+                df_x_coordinacion = crear_hoja_x_coordinacion(df_completo)
+                logger.info(f"🔍 DataFrame X_Coordinación creado: {len(df_x_coordinacion)} filas, {len(df_x_coordinacion.columns)} columnas")
+                logger.info(f"🔍 Columnas en df_x_coordinacion: {list(df_x_coordinacion.columns)}")
+            except Exception as e:
+                logger.error(f"❌ Error creando hoja X_Coordinación: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
+                df_x_coordinacion = pd.DataFrame()
+            
+            if not df_x_coordinacion.empty:
+                # Reorganizar columnas del DataFrame para que coincidan con la estructura
+                # Columnas principales: Coordinación, Cantidad Prestada, Saldo Capital, etc.
+                columnas_principales = [
+                    'Coordinación', 'Cantidad Prestada', 'Saldo capital', 'Saldo vencido',
+                    'Saldo total', 'Saldo riesgo capital', 'Saldo riesgo total', '% MORA'
+                ]
+                
+                # Verificar que las columnas existan y reordenar
+                columnas_disponibles = [col for col in columnas_principales if col in df_x_coordinacion.columns]
+                columnas_adicionales = [col for col in df_x_coordinacion.columns if col not in columnas_principales]
+                
+                # Reordenar DataFrame
+                df_x_coordinacion_ordenado = df_x_coordinacion[columnas_disponibles + columnas_adicionales].copy()
+                
+                # Renombrar columnas de rangos para que coincidan
+                mapeo_rangos = {
+                    'Rango_0': '0',
+                    'Rango_1-7': '1-7 días',
+                    'Rango_8-15': '8-15 días',
+                    'Rango_16-30': '16-30 días',
+                    'Rango_31-60': '31-60 días',
+                    'Rango_61-90': '61-90 días',
+                    'Rango_Mayor_90': 'Mayor_90'
+                }
+                
+                # Renombrar columnas de rangos
+                for col_antigua, col_nueva in mapeo_rangos.items():
+                    if col_antigua in df_x_coordinacion_ordenado.columns:
+                        df_x_coordinacion_ordenado = df_x_coordinacion_ordenado.rename(columns={col_antigua: col_nueva})
+                
+                logger.info(f"🔍 Escribiendo hoja X_Coordinación con {len(df_x_coordinacion_ordenado)} filas")
+                
+                # Escribir DataFrame empezando en fila 8 (después de encabezados)
+                df_x_coordinacion_ordenado.to_excel(writer, sheet_name='X_Coordinación', index=False, startrow=7)
+                ws_x_coord = writer.sheets['X_Coordinación']
+                
+                logger.info(f"✅ Hoja X_Coordinación creada en Excel. Filas: {ws_x_coord.max_row}, Columnas: {ws_x_coord.max_column}")
+                
+                # Escribir estructura completa (filas 1-7)
+                # Fila 5: Solo "PAR" en columna 11
+                ws_x_coord.cell(row=5, column=11).value = 'PAR'
+                
+                # Fila 6: Encabezados principales
+                encabezados_principales = [
+                    'Coordinación', 'Cantidad\nPrestada', 'Saldo\nCapital', 'Saldo\nVencido',
+                    'Saldo\nTotal', 'Saldo\nRiesgo Capital', 'Saldo\nRiesgo Total', '% MORA'
+                ]
+                for col_idx, encabezado in enumerate(encabezados_principales, start=1):
+                    ws_x_coord.cell(row=6, column=col_idx).value = encabezado
+                
+                # Fila 7: Encabezados de rangos
+                encabezados_rangos = [
+                    'Etiquetas de fila', '0', '1-7 días', '8-15 días', '16-30 días',
+                    '31-60 días', '61-90 días', 'Mayor_90', '(en blanco)', 'Total general'
+                ]
+                # Columna 10: "Suma de Saldo riesgo total"
+                ws_x_coord.cell(row=7, column=10).value = 'Suma de Saldo riesgo total'
+                ws_x_coord.cell(row=7, column=11).value = 'PAR'
+                # Columna 1: "Coordinación" (repetir)
+                ws_x_coord.cell(row=7, column=1).value = 'Coordinación'
+                
+                # Escribir encabezados de rangos en columnas 10-19
+                for col_idx, encabezado in enumerate(encabezados_rangos, start=10):
+                    ws_x_coord.cell(row=7, column=col_idx).value = encabezado
+                
+                # Aplicar formato
+                # Formato de moneda a columnas numéricas
+                columnas_moneda = ['Cantidad Prestada', 'Saldo capital', 'Saldo vencido', 'Saldo total',
+                                  'Saldo riesgo capital', 'Saldo riesgo total'] + list(mapeo_rangos.values())
+                for col_name in columnas_moneda:
+                    if col_name in df_x_coordinacion_ordenado.columns:
+                        col_idx = df_x_coordinacion_ordenado.columns.get_loc(col_name) + 1
+                        for row in range(8, ws_x_coord.max_row + 1):
+                            cell = ws_x_coord.cell(row=row, column=col_idx)
+                            if cell.value is not None:
+                                cell.number_format = EXCEL_CONFIG['currency_format']
+                
+                # Formato de porcentaje a % MORA
+                if '% MORA' in df_x_coordinacion_ordenado.columns:
+                    col_idx = df_x_coordinacion_ordenado.columns.get_loc('% MORA') + 1
+                    for row in range(8, ws_x_coord.max_row + 1):
+                        cell = ws_x_coord.cell(row=row, column=col_idx)
+                        if cell.value is not None:
+                            cell.number_format = '0.00%'
+                
+                # Formato de encabezados (filas 6 y 7)
+                for row in [6, 7]:
+                    for col in range(1, ws_x_coord.max_column + 1):
+                        cell = ws_x_coord.cell(row=row, column=col)
+                        if cell.value:
+                            cell.font = Font(bold=True)
+                            cell.fill = PatternFill(start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
+                
+                logger.info("✅ Hoja 'X_Coordinación' creada exitosamente")
+            else:
+                logger.warning("⚠️ No se pudo crear la hoja 'X_Coordinación' (DataFrame vacío)")
+                logger.warning(f"🔍 Columnas disponibles en df_completo: {list(df_completo.columns)[:20]}...")
+                logger.warning(f"🔍 Total columnas en df_completo: {len(df_completo.columns)}")
 
             # --- PASO 6.2: Crear hojas por coordinación ---
             for coord_name, df_coord in coordinaciones_data.items():
