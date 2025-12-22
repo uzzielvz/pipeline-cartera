@@ -1002,7 +1002,335 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         ruta_salida = os.path.join('uploads', nombre_archivo_salida)
         
         with pd.ExcelWriter(ruta_salida, engine='openpyxl') as writer:
-            # --- Hoja 0: Informe completo ---
+            # --- PASO 6.0: Crear hoja "X_Coordinación" PRIMERO ---
+            logger.info("Creando hoja 'X_Coordinación' (PRIMERA HOJA)...")
+            try:
+                df_x_coordinacion = crear_hoja_x_coordinacion(df_completo)
+                logger.info(f"🔍 DataFrame X_Coordinación creado: {len(df_x_coordinacion)} filas, {len(df_x_coordinacion.columns)} columnas")
+                logger.info(f"🔍 Columnas en df_x_coordinacion: {list(df_x_coordinacion.columns)}")
+            except Exception as e:
+                logger.error(f"❌ Error creando hoja X_Coordinación: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
+                df_x_coordinacion = pd.DataFrame()
+            
+            if not df_x_coordinacion.empty:
+                # Reorganizar columnas del DataFrame para que coincidan con la estructura
+                columnas_principales = [
+                    'Coordinación', 'Cantidad Prestada', 'Saldo capital', 'Saldo vencido',
+                    'Saldo total', 'Saldo riesgo capital', 'Saldo riesgo total', '% MORA'
+                ]
+                
+                # Verificar que las columnas existan y reordenar
+                columnas_disponibles = [col for col in columnas_principales if col in df_x_coordinacion.columns]
+                columnas_adicionales = [col for col in df_x_coordinacion.columns if col not in columnas_principales]
+                
+                # Reordenar DataFrame
+                df_x_coordinacion_ordenado = df_x_coordinacion[columnas_disponibles + columnas_adicionales].copy()
+                
+                # Renombrar columnas de rangos para que coincidan
+                mapeo_rangos = {
+                    'Rango_0': '0',
+                    'Rango_1-7': '1-7 días',
+                    'Rango_8-15': '8-15 días',
+                    'Rango_16-30': '16-30 días',
+                    'Rango_31-60': '31-60 días',
+                    'Rango_61-90': '61-90 días',
+                    'Rango_Mayor_90': 'Mayor_90'
+                }
+                
+                # Renombrar columnas de rangos
+                for col_antigua, col_nueva in mapeo_rangos.items():
+                    if col_antigua in df_x_coordinacion_ordenado.columns:
+                        df_x_coordinacion_ordenado = df_x_coordinacion_ordenado.rename(columns={col_antigua: col_nueva})
+                
+                logger.info(f"🔍 Escribiendo hoja X_Coordinación con {len(df_x_coordinacion_ordenado)} filas")
+                
+                # Escribir DataFrame empezando en fila 9 (después de encabezados en fila 6 y filas 7-8 comprimidas)
+                df_x_coordinacion_ordenado.to_excel(writer, sheet_name='X_Coordinación', index=False, startrow=9)
+                ws_x_coord = writer.sheets['X_Coordinación']
+                
+                logger.info(f"✅ Hoja X_Coordinación creada en Excel. Filas: {ws_x_coord.max_row}, Columnas: {ws_x_coord.max_column}")
+                
+                # Escribir estructura completa (filas 1-7) según formato objetivo
+                # Filas 1-4: Vacías (no hacer nada)
+                
+                # Color azul para encabezados (sombreado claro con letra azul fuerte)
+                color_fondo_azul_claro = 'D9E1F2'  # Azul claro para fondo
+                color_texto_azul_fuerte = '002060'  # Azul fuerte para texto
+                
+                # Fila 5: "PAR" centrado desde J5 hasta O5 con fondo azul
+                ws_x_coord.merge_cells('J5:O5')
+                cell_par = ws_x_coord.cell(row=5, column=10)  # Columna J (10)
+                cell_par.value = 'PAR'
+                cell_par.font = Font(bold=True, size=11, color=color_texto_azul_fuerte)
+                cell_par.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                cell_par.alignment = Alignment(horizontal='center', vertical='center')
+                cell_par.border = Border(
+                    left=Side(style='thin', color='000000'),
+                    right=Side(style='thin', color='000000'),
+                    top=Side(style='thin', color='000000'),
+                    bottom=Side(style='thin', color='000000')
+                )
+                
+                # Fila 6: Encabezados de AMBAS tablas
+                # TABLA 1: Columnas A-H (1-8) - Encabezados principales
+                encabezados_tabla1 = [
+                    'Coordinación', 'Cantidad\nPrestada', 'Saldo\nCapital', 'Saldo\nVencido',
+                    'Saldo\nTotal', 'Saldo\nRiesgo Capital', 'Saldo\nRiesgo Total', '% MORA'
+                ]
+                for col_idx, encabezado in enumerate(encabezados_tabla1, start=1):
+                    cell = ws_x_coord.cell(row=6, column=col_idx)
+                    cell.value = encabezado
+                    cell.font = Font(bold=True, size=11, color=color_texto_azul_fuerte)
+                    cell.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    cell.border = Border(
+                        left=Side(style='thin', color='000000'),
+                        right=Side(style='thin', color='000000'),
+                        top=Side(style='thin', color='000000'),
+                        bottom=Side(style='thin', color='000000')
+                    )
+                
+                # Columna I (9): Vacía - separador entre tablas (no hacer nada)
+                
+                # TABLA 2: Columnas J-S (10-19) - Copiar encabezados de la fila 10 (donde pandas los escribió) a la fila 6
+                # Primero, leer los encabezados que pandas escribió en la fila 10
+                # Limpiar todos los encabezados de la fila 10 (tanto de tabla 1 como tabla 2) y copiar solo los de tabla 2 a fila 6
+                for col_idx in range(1, ws_x_coord.max_column + 1):
+                    cell_fila10 = ws_x_coord.cell(row=10, column=col_idx)
+                    if cell_fila10.value is not None:
+                        # Si es del segundo segmento (columna 10 en adelante), copiar a la fila 6
+                        if col_idx >= 10:
+                            cell_fila6 = ws_x_coord.cell(row=6, column=col_idx)
+                            cell_fila6.value = cell_fila10.value
+                            cell_fila6.font = Font(bold=True, size=11, color=color_texto_azul_fuerte)
+                            cell_fila6.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                            cell_fila6.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                            cell_fila6.border = Border(
+                                left=Side(style='thin', color='000000'),
+                                right=Side(style='thin', color='000000'),
+                                top=Side(style='thin', color='000000'),
+                                bottom=Side(style='thin', color='000000')
+                            )
+                        # Limpiar la celda de la fila 10 (ya la copiamos o no la necesitamos)
+                        cell_fila10.value = None
+                        cell_fila10.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                        cell_fila10.border = Border()
+                
+                # Fila 7: Comprimir (altura mínima) - Solo algunos valores específicos
+                # Columna 10: "Suma de Saldo riesgo total"
+                cell_suma = ws_x_coord.cell(row=7, column=10)
+                cell_suma.value = 'Suma de Saldo riesgo total'
+                cell_suma.font = Font(bold=True, size=9, color=color_texto_azul_fuerte)
+                cell_suma.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                cell_suma.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                
+                # Columna 11: "PAR"
+                cell_par_fila7 = ws_x_coord.cell(row=7, column=11)
+                cell_par_fila7.value = 'PAR'
+                cell_par_fila7.font = Font(bold=True, size=9, color=color_texto_azul_fuerte)
+                cell_par_fila7.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                cell_par_fila7.alignment = Alignment(horizontal='center', vertical='center')
+                
+                # Fila 8: Comprimir (altura mínima) - Solo algunos valores específicos
+                # Columna 1: "Coordinación" (repetir)
+                cell_coord_fila8 = ws_x_coord.cell(row=8, column=1)
+                cell_coord_fila8.value = 'Coordinación'
+                cell_coord_fila8.font = Font(bold=True, size=9, color=color_texto_azul_fuerte)
+                cell_coord_fila8.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                cell_coord_fila8.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                
+                # Columna 10: "Etiquetas de fila" (repetir)
+                cell_etiquetas = ws_x_coord.cell(row=8, column=10)
+                cell_etiquetas.value = 'Etiquetas de fila'
+                cell_etiquetas.font = Font(bold=True, size=9, color=color_texto_azul_fuerte)
+                cell_etiquetas.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                cell_etiquetas.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                
+                # Columna 11: "PAR" (repetir)
+                cell_par_fila8 = ws_x_coord.cell(row=8, column=11)
+                cell_par_fila8.value = 'PAR'
+                cell_par_fila8.font = Font(bold=True, size=9, color=color_texto_azul_fuerte)
+                cell_par_fila8.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                cell_par_fila8.alignment = Alignment(horizontal='center', vertical='center')
+                
+                # Aplicar formato a datos (fila 11+)
+                # Formato de moneda a columnas numéricas
+                columnas_moneda = ['Cantidad Prestada', 'Saldo capital', 'Saldo vencido', 'Saldo total',
+                                  'Saldo riesgo capital', 'Saldo riesgo total'] + list(mapeo_rangos.values())
+                for col_name in columnas_moneda:
+                    if col_name in df_x_coordinacion_ordenado.columns:
+                        col_idx = df_x_coordinacion_ordenado.columns.get_loc(col_name) + 1
+                        for row in range(11, ws_x_coord.max_row + 1):
+                            cell = ws_x_coord.cell(row=row, column=col_idx)
+                            if cell.value is not None:
+                                cell.number_format = EXCEL_CONFIG['currency_format']
+                                cell.alignment = Alignment(horizontal='right', vertical='center')
+                                cell.border = Border(
+                                    left=Side(style='thin', color='000000'),
+                                    right=Side(style='thin', color='000000'),
+                                    top=Side(style='thin', color='000000'),
+                                    bottom=Side(style='thin', color='000000')
+                                )
+                
+                # Formato de porcentaje a % MORA - Solo encabezado en amarillo
+                color_amarillo = 'FFFF00'  # Amarillo
+                if '% MORA' in df_x_coordinacion_ordenado.columns:
+                    col_idx = df_x_coordinacion_ordenado.columns.get_loc('% MORA') + 1
+                    # Aplicar formato a encabezado en fila 6 (solo el encabezado en amarillo)
+                    cell_header = ws_x_coord.cell(row=6, column=col_idx)
+                    cell_header.fill = PatternFill(start_color=color_amarillo, end_color=color_amarillo, fill_type='solid')
+                    # Aplicar formato a datos (fila 11+) - SIN fondo amarillo, solo formato de porcentaje
+                    for row in range(11, ws_x_coord.max_row + 1):
+                        cell = ws_x_coord.cell(row=row, column=col_idx)
+                        if cell.value is not None:
+                            cell.number_format = '0.00%'
+                            cell.alignment = Alignment(horizontal='right', vertical='center')
+                            cell.border = Border(
+                                left=Side(style='thin', color='000000'),
+                                right=Side(style='thin', color='000000'),
+                                top=Side(style='thin', color='000000'),
+                                bottom=Side(style='thin', color='000000')
+                            )
+                
+                # Formato a columna Coordinación
+                if 'Coordinación' in df_x_coordinacion_ordenado.columns:
+                    col_idx = df_x_coordinacion_ordenado.columns.get_loc('Coordinación') + 1
+                    for row in range(10, ws_x_coord.max_row + 1):
+                        cell = ws_x_coord.cell(row=row, column=col_idx)
+                        cell.alignment = Alignment(horizontal='left', vertical='center')
+                        cell.border = Border(
+                            left=Side(style='thin', color='000000'),
+                            right=Side(style='thin', color='000000'),
+                            top=Side(style='thin', color='000000'),
+                            bottom=Side(style='thin', color='000000')
+                        )
+                        # Resaltar fila de Total con azul claro (mismo que encabezados)
+                        if cell.value == 'Total':
+                            for col in range(1, ws_x_coord.max_column + 1):
+                                total_cell = ws_x_coord.cell(row=row, column=col)
+                                total_cell.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                                total_cell.font = Font(bold=True, color=color_texto_azul_fuerte)
+                                total_cell.border = Border(
+                                    left=Side(style='thin', color='000000'),
+                                    right=Side(style='thin', color='000000'),
+                                    top=Side(style='thin', color='000000'),
+                                    bottom=Side(style='thin', color='000000')
+                                )
+                
+                # Ajustar ancho de columnas
+                for col_idx in range(1, ws_x_coord.max_column + 1):
+                    column_letter = get_column_letter(col_idx)
+                    if col_idx != 9:  # Todas las columnas excepto I
+                        max_length = 0
+                        for row in range(1, ws_x_coord.max_row + 1):
+                            cell = ws_x_coord.cell(row=row, column=col_idx)
+                            if cell.value:
+                                max_length = max(max_length, len(str(cell.value)))
+                        ws_x_coord.column_dimensions[column_letter].width = min(max_length + 2, 20)
+                
+                # Columna I (9): Completamente oculta (ancho 0 y hidden) - Hacerlo al final
+                column_letter_i = get_column_letter(9)
+                ws_x_coord.column_dimensions[column_letter_i].width = 0.0  # 0.00 de ancho
+                ws_x_coord.column_dimensions[column_letter_i].hidden = True  # Ocultar completamente
+                # Limpiar todas las celdas de la columna I
+                for row in range(1, ws_x_coord.max_row + 1):
+                    cell = ws_x_coord.cell(row=row, column=9)
+                    cell.value = None
+                    cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                    cell.border = Border()
+                
+                # Ajustar altura de filas - Fila 6 visible y larga, filas 7-10 con altura 0 (completamente invisibles)
+                ws_x_coord.row_dimensions[6].height = 30  # Fila 6: Visible y larga (encabezados)
+                ws_x_coord.row_dimensions[7].height = 0.0   # Fila 7: Altura 0.0 (completamente invisible)
+                ws_x_coord.row_dimensions[8].height = 0.0   # Fila 8: Altura 0.0 (completamente invisible)
+                ws_x_coord.row_dimensions[9].height = 0.0   # Fila 9: Altura 0.0 (completamente invisible)
+                ws_x_coord.row_dimensions[10].height = 0.0   # Fila 10: Altura 0.0 (completamente invisible)
+                
+                # Ocultar filas 7, 8, 9 y 10 completamente (método adicional)
+                ws_x_coord.row_dimensions[7].hidden = True
+                ws_x_coord.row_dimensions[8].hidden = True
+                ws_x_coord.row_dimensions[9].hidden = True
+                ws_x_coord.row_dimensions[10].hidden = True
+                
+                # Determinar límites reales de la tabla
+                # Última columna con datos: buscar en todas las filas de datos (11+)
+                ultima_col_con_datos = 0
+                ultima_fila_con_datos = 0
+                for row in range(11, ws_x_coord.max_row + 1):
+                    for col in range(1, ws_x_coord.max_column + 1):
+                        cell = ws_x_coord.cell(row=row, column=col)
+                        if cell.value is not None and str(cell.value).strip() != '':
+                            ultima_col_con_datos = max(ultima_col_con_datos, col)
+                            ultima_fila_con_datos = max(ultima_fila_con_datos, row)
+                
+                # Si no encontramos datos, usar la última columna del segundo segmento (S = 19)
+                if ultima_col_con_datos == 0:
+                    ultima_col_con_datos = 19  # Columna S
+                
+                logger.info(f"📊 Límites de tabla: Última columna={ultima_col_con_datos}, Última fila={ultima_fila_con_datos}")
+                
+                # Limpiar filas 1-4 (fuera del área) - completamente blancas sin bordes
+                for row in range(1, 5):
+                    for col in range(1, ws_x_coord.max_column + 1):
+                        cell = ws_x_coord.cell(row=row, column=col)
+                        cell.value = None
+                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                        cell.border = Border()  # Sin bordes
+                
+                # Limpiar fila 5 excepto la celda PAR (J5:O5)
+                for col in range(1, ws_x_coord.max_column + 1):
+                    # Si no es parte de PAR (J5:O5), limpiar
+                    if not (col >= 10 and col <= 15):  # J=10, O=15
+                        cell = ws_x_coord.cell(row=5, column=col)
+                        cell.value = None
+                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                        cell.border = Border()  # Sin bordes
+                
+                # Limpiar columnas a la DERECHA de la tabla (después de la última columna con datos)
+                for row in range(1, ws_x_coord.max_row + 1):
+                    for col in range(ultima_col_con_datos + 1, ws_x_coord.max_column + 1):
+                        cell = ws_x_coord.cell(row=row, column=col)
+                        cell.value = None
+                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                        cell.border = Border()  # Sin bordes
+                
+                # Limpiar filas ABAJO de la tabla (después de la última fila con datos)
+                if ultima_fila_con_datos > 0:
+                    for row in range(ultima_fila_con_datos + 1, ws_x_coord.max_row + 1):
+                        for col in range(1, ws_x_coord.max_column + 1):
+                            cell = ws_x_coord.cell(row=row, column=col)
+                            cell.value = None
+                            cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                            cell.border = Border()  # Sin bordes
+                
+                # Limpiar celdas vacías en las filas de datos (después de la última columna con datos)
+                for row in range(11, ultima_fila_con_datos + 1 if ultima_fila_con_datos > 0 else ws_x_coord.max_row + 1):
+                    for col in range(ultima_col_con_datos + 1, ws_x_coord.max_column + 1):
+                        cell = ws_x_coord.cell(row=row, column=col)
+                        cell.value = None
+                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                        cell.border = Border()  # Sin bordes
+                
+                # Limpiar también las celdas fuera del rango de datos en la fila 6 (encabezados)
+                # Área principal: A-H (1-8) y J-S (10-19)
+                for col in range(1, ws_x_coord.max_column + 1):
+                    if col != 9:  # No tocar columna I (ya está oculta)
+                        cell = ws_x_coord.cell(row=6, column=col)
+                        # Si no está en el rango A-H o J-S, limpiar
+                        if not ((col >= 1 and col <= 8) or (col >= 10 and col <= 19)):
+                            cell.value = None
+                            cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+                            cell.border = Border()  # Sin bordes
+                
+                logger.info("✅ Hoja 'X_Coordinación' creada exitosamente como PRIMERA HOJA")
+            else:
+                logger.warning("⚠️ No se pudo crear la hoja 'X_Coordinación' (DataFrame vacío)")
+                logger.warning(f"🔍 Columnas disponibles en df_completo: {list(df_completo.columns)[:20]}...")
+                logger.warning(f"🔍 Total columnas en df_completo: {len(df_completo.columns)}")
+            
+            # --- Hoja 1: Informe completo ---
             hoja_informe = fecha_actual
             
             
@@ -1459,118 +1787,6 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # 11. Instrucciones removidas para diseño más limpio
             
             logger.info("✅ Hoja 'Liquidación anticipada' creada")
-
-            # --- PASO 6.1.3: Crear hoja "X_Coordinación" ---
-            logger.info("Creando hoja 'X_Coordinación'...")
-            try:
-                df_x_coordinacion = crear_hoja_x_coordinacion(df_completo)
-                logger.info(f"🔍 DataFrame X_Coordinación creado: {len(df_x_coordinacion)} filas, {len(df_x_coordinacion.columns)} columnas")
-                logger.info(f"🔍 Columnas en df_x_coordinacion: {list(df_x_coordinacion.columns)}")
-            except Exception as e:
-                logger.error(f"❌ Error creando hoja X_Coordinación: {str(e)}")
-                import traceback
-                logger.error(traceback.format_exc())
-                df_x_coordinacion = pd.DataFrame()
-            
-            if not df_x_coordinacion.empty:
-                # Reorganizar columnas del DataFrame para que coincidan con la estructura
-                # Columnas principales: Coordinación, Cantidad Prestada, Saldo Capital, etc.
-                columnas_principales = [
-                    'Coordinación', 'Cantidad Prestada', 'Saldo capital', 'Saldo vencido',
-                    'Saldo total', 'Saldo riesgo capital', 'Saldo riesgo total', '% MORA'
-                ]
-                
-                # Verificar que las columnas existan y reordenar
-                columnas_disponibles = [col for col in columnas_principales if col in df_x_coordinacion.columns]
-                columnas_adicionales = [col for col in df_x_coordinacion.columns if col not in columnas_principales]
-                
-                # Reordenar DataFrame
-                df_x_coordinacion_ordenado = df_x_coordinacion[columnas_disponibles + columnas_adicionales].copy()
-                
-                # Renombrar columnas de rangos para que coincidan
-                mapeo_rangos = {
-                    'Rango_0': '0',
-                    'Rango_1-7': '1-7 días',
-                    'Rango_8-15': '8-15 días',
-                    'Rango_16-30': '16-30 días',
-                    'Rango_31-60': '31-60 días',
-                    'Rango_61-90': '61-90 días',
-                    'Rango_Mayor_90': 'Mayor_90'
-                }
-                
-                # Renombrar columnas de rangos
-                for col_antigua, col_nueva in mapeo_rangos.items():
-                    if col_antigua in df_x_coordinacion_ordenado.columns:
-                        df_x_coordinacion_ordenado = df_x_coordinacion_ordenado.rename(columns={col_antigua: col_nueva})
-                
-                logger.info(f"🔍 Escribiendo hoja X_Coordinación con {len(df_x_coordinacion_ordenado)} filas")
-                
-                # Escribir DataFrame empezando en fila 8 (después de encabezados)
-                df_x_coordinacion_ordenado.to_excel(writer, sheet_name='X_Coordinación', index=False, startrow=7)
-                ws_x_coord = writer.sheets['X_Coordinación']
-                
-                logger.info(f"✅ Hoja X_Coordinación creada en Excel. Filas: {ws_x_coord.max_row}, Columnas: {ws_x_coord.max_column}")
-                
-                # Escribir estructura completa (filas 1-7)
-                # Fila 5: Solo "PAR" en columna 11
-                ws_x_coord.cell(row=5, column=11).value = 'PAR'
-                
-                # Fila 6: Encabezados principales
-                encabezados_principales = [
-                    'Coordinación', 'Cantidad\nPrestada', 'Saldo\nCapital', 'Saldo\nVencido',
-                    'Saldo\nTotal', 'Saldo\nRiesgo Capital', 'Saldo\nRiesgo Total', '% MORA'
-                ]
-                for col_idx, encabezado in enumerate(encabezados_principales, start=1):
-                    ws_x_coord.cell(row=6, column=col_idx).value = encabezado
-                
-                # Fila 7: Encabezados de rangos
-                encabezados_rangos = [
-                    'Etiquetas de fila', '0', '1-7 días', '8-15 días', '16-30 días',
-                    '31-60 días', '61-90 días', 'Mayor_90', '(en blanco)', 'Total general'
-                ]
-                # Columna 10: "Suma de Saldo riesgo total"
-                ws_x_coord.cell(row=7, column=10).value = 'Suma de Saldo riesgo total'
-                ws_x_coord.cell(row=7, column=11).value = 'PAR'
-                # Columna 1: "Coordinación" (repetir)
-                ws_x_coord.cell(row=7, column=1).value = 'Coordinación'
-                
-                # Escribir encabezados de rangos en columnas 10-19
-                for col_idx, encabezado in enumerate(encabezados_rangos, start=10):
-                    ws_x_coord.cell(row=7, column=col_idx).value = encabezado
-                
-                # Aplicar formato
-                # Formato de moneda a columnas numéricas
-                columnas_moneda = ['Cantidad Prestada', 'Saldo capital', 'Saldo vencido', 'Saldo total',
-                                  'Saldo riesgo capital', 'Saldo riesgo total'] + list(mapeo_rangos.values())
-                for col_name in columnas_moneda:
-                    if col_name in df_x_coordinacion_ordenado.columns:
-                        col_idx = df_x_coordinacion_ordenado.columns.get_loc(col_name) + 1
-                        for row in range(8, ws_x_coord.max_row + 1):
-                            cell = ws_x_coord.cell(row=row, column=col_idx)
-                            if cell.value is not None:
-                                cell.number_format = EXCEL_CONFIG['currency_format']
-                
-                # Formato de porcentaje a % MORA
-                if '% MORA' in df_x_coordinacion_ordenado.columns:
-                    col_idx = df_x_coordinacion_ordenado.columns.get_loc('% MORA') + 1
-                    for row in range(8, ws_x_coord.max_row + 1):
-                        cell = ws_x_coord.cell(row=row, column=col_idx)
-                        if cell.value is not None:
-                            cell.number_format = '0.00%'
-                
-                # Formato de encabezados (filas 6 y 7)
-                for row in [6, 7]:
-                    for col in range(1, ws_x_coord.max_column + 1):
-                        cell = ws_x_coord.cell(row=row, column=col)
-                        if cell.value:
-                            cell.font = Font(bold=True)
-                            cell.fill = PatternFill(start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
-                
-                logger.info("✅ Hoja 'X_Coordinación' creada exitosamente")
-            else:
-                logger.warning("⚠️ No se pudo crear la hoja 'X_Coordinación' (DataFrame vacío)")
-                logger.warning(f"🔍 Columnas disponibles en df_completo: {list(df_completo.columns)[:20]}...")
-                logger.warning(f"🔍 Total columnas en df_completo: {len(df_completo.columns)}")
 
             # --- PASO 6.2: Crear hojas por coordinación ---
             for coord_name, df_coord in coordinaciones_data.items():
