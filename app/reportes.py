@@ -125,17 +125,6 @@ def add_par_column(df, mora_column):
     
     return df[nuevas_columnas]
 
-def create_excel_hyperlink(worksheet, row, col, text, url):
-    """Crea un hipervínculo en Excel de forma segura"""
-    try:
-        if pd.notna(url) and str(url).strip() and str(url) != 'nan':
-            worksheet.cell(row=row, column=col).hyperlink = str(url)
-            worksheet.cell(row=row, column=col).value = str(text)
-        else:
-            worksheet.cell(row=row, column=col).value = str(text)
-    except Exception as e:
-        logger.warning(f"Error creando hipervínculo en fila {row}, columna {col}: {str(e)}")
-        worksheet.cell(row=row, column=col).value = str(text)
 
 def generate_valid_table_name(sheet_name):
     """
@@ -392,6 +381,34 @@ def agregar_columnas_riesgo_y_mora(df):
     
     return df
 
+def limpiar_celda_segura(cell):
+    """
+    Limpia una celda de forma segura, verificando si es MergedCell (solo lectura).
+    
+    Args:
+        cell: Objeto Cell de openpyxl
+        
+    Returns:
+        True si se pudo limpiar, False si es MergedCell
+    """
+    try:
+        from openpyxl.cell.cell import MergedCell
+        if isinstance(cell, MergedCell):
+            return False  # No se puede modificar MergedCell
+        cell.value = None
+        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
+        cell.border = Border()
+        return True
+    except (AttributeError, TypeError, ImportError):
+        # Si hay error, intentar solo limpiar el valor
+        try:
+            if not isinstance(cell, MergedCell):
+                cell.value = None
+                return True
+        except:
+            pass
+        return False
+
 def crear_hoja_x_coordinacion(df_completo):
     """
     Crea la hoja 'X_Coordinación' con datos agregados por coordinación.
@@ -578,6 +595,245 @@ def crear_hoja_x_coordinacion(df_completo):
     df_resultado = pd.concat([df_resultado, fila_total], ignore_index=True)
     
     logger.info(f"✅ Hoja X_Coordinación creada con {len(grupo)} coordinaciones + 1 total")
+    
+    return df_resultado
+
+def crear_hoja_x_recuperador(df_completo):
+    """
+    Crea la hoja 'X_Recuperador' con datos agregados por coordinación y recuperador.
+    
+    Similar a X_Coordinación pero agrupando por Coordinación + Recuperador.
+    
+    Args:
+        df_completo: DataFrame completo con todos los datos procesados
+        
+    Returns:
+        DataFrame con la estructura de la hoja X_Recuperador
+    """
+    logger.info("Creando hoja X_Recuperador...")
+    
+    # Verificar columnas requeridas
+    columna_coordinacion = COLUMN_MAPPING.get('coordinacion', 'Coordinación')
+    columnas_requeridas = [
+        columna_coordinacion,
+        'Código recuperador',
+        'Nombre recuperador',
+        'Cantidad Prestada',
+        'Saldo capital',
+        'Saldo vencido',
+        'Saldo total',
+        'Saldo riesgo capital',
+        'Saldo riesgo total',
+        '% MORA',
+        'Días de mora'
+    ]
+    
+    # Verificar y calcular columnas de riesgo si no existen
+    if 'Saldo riesgo capital' not in df_completo.columns:
+        logger.info("🔍 Calculando 'Saldo riesgo capital' (no existe en df_completo)")
+        df_completo['Saldo riesgo capital'] = df_completo.apply(
+            lambda row: row['Saldo capital'] if pd.notna(row.get('Días de mora', 0)) and row.get('Días de mora', 0) > 0 else 0,
+            axis=1
+        )
+    
+    if 'Saldo riesgo total' not in df_completo.columns:
+        logger.info("🔍 Calculando 'Saldo riesgo total' (no existe en df_completo)")
+        df_completo['Saldo riesgo total'] = df_completo.apply(
+            lambda row: row['Saldo total'] if pd.notna(row.get('Días de mora', 0)) and row.get('Días de mora', 0) > 0 else 0,
+            axis=1
+        )
+    
+    if '% MORA' not in df_completo.columns:
+        logger.info("🔍 Calculando '% MORA' (no existe en df_completo)")
+        df_completo['% MORA'] = df_completo.apply(
+            lambda row: (row['Saldo vencido'] / row['Saldo total']) 
+                        if pd.notna(row.get('Saldo total', 0)) and row.get('Saldo total', 0) != 0 
+                        else 0,
+            axis=1
+        )
+    
+    # Verificar columnas requeridas después de calcular las que faltaban
+    # Las columnas de recuperador pueden no existir, así que las verificamos por separado
+    columnas_faltantes = []
+    for col in columnas_requeridas:
+        if col not in df_completo.columns:
+            # Si es una columna de recuperador, intentar variaciones
+            if 'recuperador' in col.lower():
+                # Buscar variaciones posibles
+                posibles_nombres = [c for c in df_completo.columns if 'recuperador' in c.lower()]
+                if not posibles_nombres:
+                    columnas_faltantes.append(col)
+                else:
+                    logger.info(f"🔍 Columna '{col}' no encontrada, pero se encontraron variaciones: {posibles_nombres}")
+            else:
+                columnas_faltantes.append(col)
+    
+    if columnas_faltantes:
+        logger.warning(f"⚠️ Columnas faltantes para X_Recuperador después de calcular: {columnas_faltantes}")
+        logger.warning(f"🔍 Columnas disponibles en df_completo: {list(df_completo.columns)[:30]}")
+        logger.warning(f"🔍 Total columnas: {len(df_completo.columns)}")
+        # Si faltan columnas críticas (no recuperador), retornar vacío
+        columnas_criticas = [col for col in columnas_faltantes if 'recuperador' not in col.lower()]
+        if columnas_criticas:
+            return pd.DataFrame()
+        # Si solo faltan columnas de recuperador, continuar pero usar valores por defecto
+    
+    logger.info(f"✅ Columnas requeridas verificadas. Total registros: {len(df_completo)}")
+    
+    # Verificar si existen columnas de recuperador, si no, crear columnas dummy
+    codigo_rec_col = 'Código recuperador' if 'Código recuperador' in df_completo.columns else None
+    nombre_rec_col = 'Nombre recuperador' if 'Nombre recuperador' in df_completo.columns else None
+    
+    if codigo_rec_col is None or nombre_rec_col is None:
+        logger.warning("⚠️ Columnas de recuperador no encontradas, usando valores por defecto")
+        df_completo = df_completo.copy()
+        if codigo_rec_col is None:
+            df_completo['Código recuperador'] = 'N/A'
+            codigo_rec_col = 'Código recuperador'
+        if nombre_rec_col is None:
+            df_completo['Nombre recuperador'] = 'N/A'
+            nombre_rec_col = 'Nombre recuperador'
+    
+    # Agrupar por Coordinación + Recuperador y calcular agregaciones
+    # Manejar valores NaN en las columnas de agrupación
+    grupo = df_completo.groupby([columna_coordinacion, codigo_rec_col, nombre_rec_col], dropna=False).agg({
+        'Cantidad Prestada': 'sum',
+        'Saldo capital': 'sum',
+        'Saldo vencido': 'sum',
+        'Saldo total': 'sum',
+        'Saldo riesgo capital': 'sum',
+        'Saldo riesgo total': 'sum',
+        '% MORA': 'mean'  # Promedio del porcentaje (se recalculará después)
+    }).reset_index()
+    
+    # Calcular % MORA correcto (promedio ponderado o recálculo)
+    # % MORA = Saldo vencido / Saldo total (por coordinación + recuperador)
+    grupo['% MORA'] = grupo.apply(
+        lambda row: (row['Saldo vencido'] / row['Saldo total']) 
+                    if pd.notna(row['Saldo total']) and row['Saldo total'] != 0 
+                    else 0,
+        axis=1
+    )
+    
+    # Calcular rangos de días de mora para cada coordinación + recuperador
+    def calcular_rangos_mora(df_group, columna_mora='Días de mora', columna_riesgo='Saldo riesgo total'):
+        """Calcula la suma de Saldo riesgo total por rangos de días de mora"""
+        rangos = {
+            '0': 0,
+            '1-7': 0,
+            '8-15': 0,
+            '16-30': 0,
+            '31-60': 0,
+            '61-90': 0,
+            'Mayor_90': 0
+        }
+        
+        if columna_mora not in df_group.columns or columna_riesgo not in df_group.columns:
+            return rangos
+        
+        for idx, row in df_group.iterrows():
+            dias_mora = row[columna_mora] if pd.notna(row[columna_mora]) else 0
+            saldo_riesgo = row[columna_riesgo] if pd.notna(row[columna_riesgo]) else 0
+            
+            if dias_mora == 0:
+                rangos['0'] += saldo_riesgo
+            elif 1 <= dias_mora <= 7:
+                rangos['1-7'] += saldo_riesgo
+            elif 8 <= dias_mora <= 15:
+                rangos['8-15'] += saldo_riesgo
+            elif 16 <= dias_mora <= 30:
+                rangos['16-30'] += saldo_riesgo
+            elif 31 <= dias_mora <= 60:
+                rangos['31-60'] += saldo_riesgo
+            elif 61 <= dias_mora <= 90:
+                rangos['61-90'] += saldo_riesgo
+            else:
+                rangos['Mayor_90'] += saldo_riesgo
+        
+        return rangos
+    
+    # Calcular rangos para cada coordinación + recuperador
+    rangos_por_grupo = []
+    for idx, row in grupo.iterrows():
+        coord = row[columna_coordinacion]
+        codigo_rec = row[codigo_rec_col]
+        nombre_rec = row[nombre_rec_col]
+        
+        # Filtrar datos del grupo específico (manejar NaN)
+        mask = (df_completo[columna_coordinacion] == coord)
+        if pd.notna(codigo_rec):
+            mask = mask & (df_completo[codigo_rec_col] == codigo_rec)
+        else:
+            mask = mask & (df_completo[codigo_rec_col].isna())
+        
+        if pd.notna(nombre_rec):
+            mask = mask & (df_completo[nombre_rec_col] == nombre_rec)
+        else:
+            mask = mask & (df_completo[nombre_rec_col].isna())
+        
+        df_group = df_completo[mask]
+        
+        rangos = calcular_rangos_mora(df_group)
+        rangos_por_grupo.append(rangos)
+    
+    # Agregar columnas de rangos al grupo
+    grupo['Rango_0'] = [r['0'] for r in rangos_por_grupo]
+    grupo['Rango_1-7'] = [r['1-7'] for r in rangos_por_grupo]
+    grupo['Rango_8-15'] = [r['8-15'] for r in rangos_por_grupo]
+    grupo['Rango_16-30'] = [r['16-30'] for r in rangos_por_grupo]
+    grupo['Rango_31-60'] = [r['31-60'] for r in rangos_por_grupo]
+    grupo['Rango_61-90'] = [r['61-90'] for r in rangos_por_grupo]
+    grupo['Rango_Mayor_90'] = [r['Mayor_90'] for r in rangos_por_grupo]
+    
+    # Calcular total general
+    total_general = {
+        columna_coordinacion: 'Total',
+        codigo_rec_col: '',
+        nombre_rec_col: '',
+        'Cantidad Prestada': grupo['Cantidad Prestada'].sum(),
+        'Saldo capital': grupo['Saldo capital'].sum(),
+        'Saldo vencido': grupo['Saldo vencido'].sum(),
+        'Saldo total': grupo['Saldo total'].sum(),
+        'Saldo riesgo capital': grupo['Saldo riesgo capital'].sum(),
+        'Saldo riesgo total': grupo['Saldo riesgo total'].sum(),
+        '% MORA': (grupo['Saldo vencido'].sum() / grupo['Saldo total'].sum()) 
+                  if grupo['Saldo total'].sum() != 0 else 0,
+        'Rango_0': grupo['Rango_0'].sum(),
+        'Rango_1-7': grupo['Rango_1-7'].sum(),
+        'Rango_8-15': grupo['Rango_8-15'].sum(),
+        'Rango_16-30': grupo['Rango_16-30'].sum(),
+        'Rango_31-60': grupo['Rango_31-60'].sum(),
+        'Rango_61-90': grupo['Rango_61-90'].sum(),
+        'Rango_Mayor_90': grupo['Rango_Mayor_90'].sum()
+    }
+    
+    # Crear DataFrame final con estructura específica
+    df_resultado = grupo.copy()
+    
+    # Renombrar columnas para que coincidan con el formato esperado
+    rename_dict = {
+        columna_coordinacion: 'Coordinación',
+        'Rango_0': 'Rango_0',
+        'Rango_1-7': 'Rango_1-7',
+        'Rango_8-15': 'Rango_8-15',
+        'Rango_16-30': 'Rango_16-30',
+        'Rango_31-60': 'Rango_31-60',
+        'Rango_61-90': 'Rango_61-90',
+        'Rango_Mayor_90': 'Rango_Mayor_90'
+    }
+    # Asegurar que las columnas de recuperador tengan los nombres correctos
+    if codigo_rec_col != 'Código recuperador':
+        rename_dict[codigo_rec_col] = 'Código recuperador'
+    if nombre_rec_col != 'Nombre recuperador':
+        rename_dict[nombre_rec_col] = 'Nombre recuperador'
+    
+    df_resultado = df_resultado.rename(columns=rename_dict)
+    
+    # Agregar fila de total general
+    fila_total = pd.DataFrame([total_general])
+    df_resultado = pd.concat([df_resultado, fila_total], ignore_index=True)
+    
+    logger.info(f"✅ Hoja X_Recuperador creada con {len(grupo)} grupos + 1 total")
     
     return df_resultado
 
@@ -1001,7 +1257,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         nombre_archivo_salida = f'ReportedeAntigüedad_{fecha_actual}.xlsx'
         ruta_salida = os.path.join('uploads', nombre_archivo_salida)
         
-        with pd.ExcelWriter(ruta_salida, engine='openpyxl') as writer:
+        # Crear nuevo archivo Excel
+        writer = pd.ExcelWriter(ruta_salida, engine='openpyxl')
+        
+        with writer:
             # --- PASO 6.0: Crear hoja "X_Coordinación" PRIMERO ---
             logger.info("Creando hoja 'X_Coordinación' (PRIMERA HOJA)...")
             try:
@@ -1113,10 +1372,8 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                                 top=Side(style='thin', color='000000'),
                                 bottom=Side(style='thin', color='000000')
                             )
-                        # Limpiar la celda de la fila 10 (ya la copiamos o no la necesitamos)
-                        cell_fila10.value = None
-                        cell_fila10.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                        cell_fila10.border = Border()
+                        # Limpiar la celda de la fila 10 (solo si no está fusionada)
+                        limpiar_celda_segura(cell_fila10)
                 
                 # Fila 7: Comprimir (altura mínima) - Solo algunos valores específicos
                 # Columna 10: "Suma de Saldo riesgo total"
@@ -1237,9 +1494,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Limpiar todas las celdas de la columna I
                 for row in range(1, ws_x_coord.max_row + 1):
                     cell = ws_x_coord.cell(row=row, column=9)
-                    cell.value = None
-                    cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                    cell.border = Border()
+                    limpiar_celda_segura(cell)
                 
                 # Ajustar altura de filas - Fila 6 visible y larga, filas 7-10 con altura 0 (completamente invisibles)
                 ws_x_coord.row_dimensions[6].height = 30  # Fila 6: Visible y larga (encabezados)
@@ -1275,43 +1530,33 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 for row in range(1, 5):
                     for col in range(1, ws_x_coord.max_column + 1):
                         cell = ws_x_coord.cell(row=row, column=col)
-                        cell.value = None
-                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                        cell.border = Border()  # Sin bordes
+                        limpiar_celda_segura(cell)
                 
                 # Limpiar fila 5 excepto la celda PAR (J5:O5)
                 for col in range(1, ws_x_coord.max_column + 1):
                     # Si no es parte de PAR (J5:O5), limpiar
                     if not (col >= 10 and col <= 15):  # J=10, O=15
                         cell = ws_x_coord.cell(row=5, column=col)
-                        cell.value = None
-                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                        cell.border = Border()  # Sin bordes
+                        limpiar_celda_segura(cell)
                 
                 # Limpiar columnas a la DERECHA de la tabla (después de la última columna con datos)
                 for row in range(1, ws_x_coord.max_row + 1):
                     for col in range(ultima_col_con_datos + 1, ws_x_coord.max_column + 1):
                         cell = ws_x_coord.cell(row=row, column=col)
-                        cell.value = None
-                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                        cell.border = Border()  # Sin bordes
+                        limpiar_celda_segura(cell)
                 
                 # Limpiar filas ABAJO de la tabla (después de la última fila con datos)
                 if ultima_fila_con_datos > 0:
                     for row in range(ultima_fila_con_datos + 1, ws_x_coord.max_row + 1):
                         for col in range(1, ws_x_coord.max_column + 1):
                             cell = ws_x_coord.cell(row=row, column=col)
-                            cell.value = None
-                            cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                            cell.border = Border()  # Sin bordes
+                            limpiar_celda_segura(cell)
                 
                 # Limpiar celdas vacías en las filas de datos (después de la última columna con datos)
                 for row in range(11, ultima_fila_con_datos + 1 if ultima_fila_con_datos > 0 else ws_x_coord.max_row + 1):
                     for col in range(ultima_col_con_datos + 1, ws_x_coord.max_column + 1):
                         cell = ws_x_coord.cell(row=row, column=col)
-                        cell.value = None
-                        cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                        cell.border = Border()  # Sin bordes
+                        limpiar_celda_segura(cell)
                 
                 # Limpiar también las celdas fuera del rango de datos en la fila 6 (encabezados)
                 # Área principal: A-H (1-8) y J-S (10-19)
@@ -1320,9 +1565,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                         cell = ws_x_coord.cell(row=6, column=col)
                         # Si no está en el rango A-H o J-S, limpiar
                         if not ((col >= 1 and col <= 8) or (col >= 10 and col <= 19)):
-                            cell.value = None
-                            cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                            cell.border = Border()  # Sin bordes
+                            limpiar_celda_segura(cell)
                 
                 # LIMPIEZA FINAL: Asegurar que TODAS las celdas fuera del área estén blancas sin bordes
                 # Esto se hace al final para evitar que otros formatos sobrescriban
@@ -1353,17 +1596,277 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                         # Si NO está en el área principal, limpiar completamente
                         if not en_area_principal:
                             cell = ws_x_coord.cell(row=row, column=col)
-                            cell.value = None
-                            cell.fill = PatternFill(start_color='FFFFFF', end_color='FFFFFF', fill_type='solid')
-                            cell.border = Border()  # Sin bordes
-                            cell.font = Font()  # Resetear fuente
-                            cell.alignment = Alignment()  # Resetear alineación
+                            if limpiar_celda_segura(cell):
+                                try:
+                                    cell.font = Font()  # Resetear fuente
+                                    cell.alignment = Alignment()  # Resetear alineación
+                                except:
+                                    pass
                 
                 logger.info("✅ Hoja 'X_Coordinación' creada exitosamente como PRIMERA HOJA")
             else:
                 logger.warning("⚠️ No se pudo crear la hoja 'X_Coordinación' (DataFrame vacío)")
                 logger.warning(f"🔍 Columnas disponibles en df_completo: {list(df_completo.columns)[:20]}...")
                 logger.warning(f"🔍 Total columnas en df_completo: {len(df_completo.columns)}")
+            
+            # --- PASO 6.1: Crear hoja "X_Recuperador" SEGUNDA ---
+            logger.info("Creando hoja 'X_Recuperador' (SEGUNDA HOJA)...")
+            try:
+                df_x_recuperador = crear_hoja_x_recuperador(df_completo)
+                logger.info(f"🔍 DataFrame X_Recuperador creado: {len(df_x_recuperador)} filas, {len(df_x_recuperador.columns)} columnas")
+                logger.info(f"🔍 Columnas en df_x_recuperador: {list(df_x_recuperador.columns)}")
+            except Exception as e:
+                logger.error(f"❌ Error creando hoja X_Recuperador: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
+                df_x_recuperador = pd.DataFrame()
+            
+            if not df_x_recuperador.empty:
+                # Reorganizar columnas del DataFrame para que coincidan con la estructura
+                # X_Recuperador tiene: Coordinación, Código recuperador, Nombre recuperador, luego las métricas
+                columnas_principales = [
+                    'Coordinación', 'Código recuperador', 'Nombre recuperador',
+                    'Cantidad Prestada', 'Saldo capital', 'Saldo vencido',
+                    'Saldo total', 'Saldo riesgo capital', 'Saldo riesgo total', '% MORA'
+                ]
+                
+                # Verificar que las columnas existan y reordenar
+                columnas_disponibles = [col for col in columnas_principales if col in df_x_recuperador.columns]
+                columnas_adicionales = [col for col in df_x_recuperador.columns if col not in columnas_principales]
+                
+                # Reordenar DataFrame
+                df_x_recuperador_ordenado = df_x_recuperador[columnas_disponibles + columnas_adicionales].copy()
+                
+                # Renombrar columnas de rangos para que coincidan
+                mapeo_rangos = {
+                    'Rango_0': '0',
+                    'Rango_1-7': '1-7 días',
+                    'Rango_8-15': '8-15 días',
+                    'Rango_16-30': '16-30 días',
+                    'Rango_31-60': '31-60 días',
+                    'Rango_61-90': '61-90 días',
+                    'Rango_Mayor_90': 'Mayor_90'
+                }
+                
+                # Renombrar columnas de rangos
+                for col_antigua, col_nueva in mapeo_rangos.items():
+                    if col_antigua in df_x_recuperador_ordenado.columns:
+                        df_x_recuperador_ordenado = df_x_recuperador_ordenado.rename(columns={col_antigua: col_nueva})
+                
+                logger.info(f"🔍 Escribiendo hoja X_Recuperador con {len(df_x_recuperador_ordenado)} filas")
+                
+                # Escribir DataFrame empezando en fila 9 (después de encabezados en fila 6 y filas 7-8 comprimidas)
+                df_x_recuperador_ordenado.to_excel(writer, sheet_name='X_Recuperador', index=False, startrow=9)
+                ws_x_recup = writer.sheets['X_Recuperador']
+                
+                logger.info(f"✅ Hoja X_Recuperador creada en Excel. Filas: {ws_x_recup.max_row}, Columnas: {ws_x_recup.max_column}")
+                
+                # Aplicar el mismo formato que X_Coordinación (reutilizar código)
+                # Color azul para encabezados
+                color_fondo_azul_claro = 'D9E1F2'
+                color_texto_azul_fuerte = '002060'
+                
+                # Fila 5: "PAR" centrado desde J5 hasta O5 con fondo azul
+                ws_x_recup.merge_cells('J5:O5')
+                cell_par = ws_x_recup.cell(row=5, column=10)
+                cell_par.value = 'PAR'
+                cell_par.font = Font(bold=True, size=11, color=color_texto_azul_fuerte)
+                cell_par.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                cell_par.alignment = Alignment(horizontal='center', vertical='center')
+                cell_par.border = Border(
+                    left=Side(style='thin', color='000000'),
+                    right=Side(style='thin', color='000000'),
+                    top=Side(style='thin', color='000000'),
+                    bottom=Side(style='thin', color='000000')
+                )
+                
+                # Fila 6: Encabezados de AMBAS tablas
+                # TABLA 1: Columnas A-J (1-10) - Coordinación, Código recuperador, Nombre recuperador, y métricas
+                encabezados_tabla1 = [
+                    'Coordinación', 'Código\nrecuperador', 'Nombre\nrecuperador',
+                    'Cantidad\nPrestada', 'Saldo\nCapital', 'Saldo\nVencido',
+                    'Saldo\nTotal', 'Saldo\nRiesgo Capital', 'Saldo\nRiesgo Total', '% MORA'
+                ]
+                for col_idx, encabezado in enumerate(encabezados_tabla1, start=1):
+                    cell = ws_x_recup.cell(row=6, column=col_idx)
+                    cell.value = encabezado
+                    cell.font = Font(bold=True, size=11, color=color_texto_azul_fuerte)
+                    cell.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                    cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                    cell.border = Border(
+                        left=Side(style='thin', color='000000'),
+                        right=Side(style='thin', color='000000'),
+                        top=Side(style='thin', color='000000'),
+                        bottom=Side(style='thin', color='000000')
+                    )
+                
+                # Columna K (11): Vacía - separador entre tablas
+                
+                # TABLA 2: Columnas L-U (12-21) - Copiar encabezados de la fila 10 (donde pandas los escribió) a la fila 6
+                for col_idx in range(1, ws_x_recup.max_column + 1):
+                    cell_fila10 = ws_x_recup.cell(row=10, column=col_idx)
+                    if cell_fila10.value is not None:
+                        # Si es del segundo segmento (columna 12 en adelante), copiar a la fila 6
+                        if col_idx >= 12:
+                            cell_fila6 = ws_x_recup.cell(row=6, column=col_idx)
+                            cell_fila6.value = cell_fila10.value
+                            cell_fila6.font = Font(bold=True, size=11, color=color_texto_azul_fuerte)
+                            cell_fila6.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                            cell_fila6.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                            cell_fila6.border = Border(
+                                left=Side(style='thin', color='000000'),
+                                right=Side(style='thin', color='000000'),
+                                top=Side(style='thin', color='000000'),
+                                bottom=Side(style='thin', color='000000')
+                            )
+                        # Limpiar la celda de la fila 10 (solo si no está fusionada)
+                        # Limpiar la celda de la fila 10 (solo si no está fusionada)
+                        limpiar_celda_segura(cell_fila10)
+                
+                # Aplicar formato a datos (fila 11+)
+                # Formato de moneda a columnas numéricas
+                mapeo_rangos_recup = {
+                    '0': '0',
+                    '1-7 días': '1-7 días',
+                    '8-15 días': '8-15 días',
+                    '16-30 días': '16-30 días',
+                    '31-60 días': '31-60 días',
+                    '61-90 días': '61-90 días',
+                    'Mayor_90': 'Mayor_90'
+                }
+                columnas_moneda = ['Cantidad Prestada', 'Saldo capital', 'Saldo vencido', 'Saldo total',
+                                  'Saldo riesgo capital', 'Saldo riesgo total'] + list(mapeo_rangos_recup.values())
+                for col_name in columnas_moneda:
+                    if col_name in df_x_recuperador_ordenado.columns:
+                        col_idx = df_x_recuperador_ordenado.columns.get_loc(col_name) + 1
+                        for row in range(11, ws_x_recup.max_row + 1):
+                            cell = ws_x_recup.cell(row=row, column=col_idx)
+                            if cell.value is not None:
+                                cell.number_format = EXCEL_CONFIG['currency_format']
+                                cell.alignment = Alignment(horizontal='right', vertical='center')
+                                cell.border = Border(
+                                    left=Side(style='thin', color='000000'),
+                                    right=Side(style='thin', color='000000'),
+                                    top=Side(style='thin', color='000000'),
+                                    bottom=Side(style='thin', color='000000')
+                                )
+                
+                # Formato de porcentaje a % MORA - Solo encabezado en amarillo
+                color_amarillo = 'FFFF00'
+                if '% MORA' in df_x_recuperador_ordenado.columns:
+                    col_idx = df_x_recuperador_ordenado.columns.get_loc('% MORA') + 1
+                    cell_header = ws_x_recup.cell(row=6, column=col_idx)
+                    cell_header.fill = PatternFill(start_color=color_amarillo, end_color=color_amarillo, fill_type='solid')
+                    for row in range(11, ws_x_recup.max_row + 1):
+                        cell = ws_x_recup.cell(row=row, column=col_idx)
+                        if cell.value is not None:
+                            cell.number_format = '0.00%'
+                            cell.alignment = Alignment(horizontal='right', vertical='center')
+                            cell.border = Border(
+                                left=Side(style='thin', color='000000'),
+                                right=Side(style='thin', color='000000'),
+                                top=Side(style='thin', color='000000'),
+                                bottom=Side(style='thin', color='000000')
+                            )
+                
+                # Formato a columnas de texto (Coordinación, Código recuperador, Nombre recuperador)
+                for col_name in ['Coordinación', 'Código recuperador', 'Nombre recuperador']:
+                    if col_name in df_x_recuperador_ordenado.columns:
+                        col_idx = df_x_recuperador_ordenado.columns.get_loc(col_name) + 1
+                        for row in range(11, ws_x_recup.max_row + 1):
+                            cell = ws_x_recup.cell(row=row, column=col_idx)
+                            cell.alignment = Alignment(horizontal='left', vertical='center')
+                            cell.border = Border(
+                                left=Side(style='thin', color='000000'),
+                                right=Side(style='thin', color='000000'),
+                                top=Side(style='thin', color='000000'),
+                                bottom=Side(style='thin', color='000000')
+                            )
+                            # Resaltar fila de Total con azul claro
+                            if cell.value == 'Total':
+                                for col in range(1, ws_x_recup.max_column + 1):
+                                    total_cell = ws_x_recup.cell(row=row, column=col)
+                                    total_cell.fill = PatternFill(start_color=color_fondo_azul_claro, end_color=color_fondo_azul_claro, fill_type='solid')
+                                    total_cell.font = Font(bold=True, color=color_texto_azul_fuerte)
+                                    total_cell.border = Border(
+                                        left=Side(style='thin', color='000000'),
+                                        right=Side(style='thin', color='000000'),
+                                        top=Side(style='thin', color='000000'),
+                                        bottom=Side(style='thin', color='000000')
+                                    )
+                
+                # Ajustar ancho de columnas
+                for col_idx in range(1, ws_x_recup.max_column + 1):
+                    column_letter = get_column_letter(col_idx)
+                    if col_idx != 11:  # Columna K (11) será comprimida
+                        max_length = 0
+                        for row in range(1, ws_x_recup.max_row + 1):
+                            cell = ws_x_recup.cell(row=row, column=col_idx)
+                            if cell.value:
+                                max_length = max(max_length, len(str(cell.value)))
+                        ws_x_recup.column_dimensions[column_letter].width = min(max_length + 2, 20)
+                
+                # Columna K (11): Completamente oculta (ancho 0 y hidden)
+                column_letter_k = get_column_letter(11)
+                ws_x_recup.column_dimensions[column_letter_k].width = 0.0
+                ws_x_recup.column_dimensions[column_letter_k].hidden = True
+                for row in range(1, ws_x_recup.max_row + 1):
+                    cell = ws_x_recup.cell(row=row, column=11)
+                    limpiar_celda_segura(cell)
+                
+                # Ajustar altura de filas - Fila 6 visible y larga, filas 7-10 con altura 0 (completamente invisibles)
+                ws_x_recup.row_dimensions[6].height = 30
+                ws_x_recup.row_dimensions[7].height = 0.0
+                ws_x_recup.row_dimensions[8].height = 0.0
+                ws_x_recup.row_dimensions[9].height = 0.0
+                ws_x_recup.row_dimensions[10].height = 0.0
+                
+                # Ocultar filas 7, 8, 9 y 10 completamente
+                ws_x_recup.row_dimensions[7].hidden = True
+                ws_x_recup.row_dimensions[8].hidden = True
+                ws_x_recup.row_dimensions[9].hidden = True
+                ws_x_recup.row_dimensions[10].hidden = True
+                
+                # Determinar límites reales de la tabla
+                ultima_col_con_datos = 0
+                ultima_fila_con_datos = 0
+                for row in range(11, ws_x_recup.max_row + 1):
+                    for col in range(1, ws_x_recup.max_column + 1):
+                        cell = ws_x_recup.cell(row=row, column=col)
+                        if cell.value is not None and str(cell.value).strip() != '':
+                            ultima_col_con_datos = max(ultima_col_con_datos, col)
+                            ultima_fila_con_datos = max(ultima_fila_con_datos, row)
+                
+                if ultima_col_con_datos == 0:
+                    ultima_col_con_datos = 21  # Columna U
+                
+                # Limpiar celdas fuera del área principal (igual que X_Coordinación)
+                for row in range(1, ws_x_recup.max_row + 1):
+                    for col in range(1, ws_x_recup.max_column + 1):
+                        en_area_principal = False
+                        
+                        if row == 5:
+                            if col >= 10 and col <= 15:  # J-O
+                                en_area_principal = True
+                        elif row == 6:
+                            if (col >= 1 and col <= 10) or (col >= 12 and col <= 21):  # A-J o L-U
+                                en_area_principal = True
+                        elif row >= 11 and row <= ultima_fila_con_datos:
+                            if (col >= 1 and col <= 10) or (col >= 12 and col <= ultima_col_con_datos):
+                                en_area_principal = True
+                        
+                        if not en_area_principal:
+                            cell = ws_x_recup.cell(row=row, column=col)
+                            if limpiar_celda_segura(cell):
+                                try:
+                                    cell.font = Font()
+                                    cell.alignment = Alignment()
+                                except:
+                                    pass
+                
+                logger.info("✅ Hoja 'X_Recuperador' creada exitosamente como SEGUNDA HOJA")
+            else:
+                logger.warning("⚠️ No se pudo crear la hoja 'X_Recuperador' (DataFrame vacío)")
             
             # --- Hoja 1: Informe completo ---
             hoja_informe = fecha_actual
@@ -1878,8 +2381,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Crear tabla formal de Excel para la hoja de coordinación y formato final
                 crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name, incluir_columnas_adicionales=False)
                 aplicar_formato_final(worksheet_coord, df_coord_sin_links, es_hoja_mora=False)
-
+            
         logger.info(f"Procesamiento completado exitosamente. Archivo generado: {ruta_salida}")
+        
         return ruta_salida, len(coordinaciones_data)
         
     except FileNotFoundError as e:
@@ -1888,7 +2392,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
     except pd.errors.EmptyDataError as e:
         logger.error(f"Archivo Excel vacío: {str(e)}")
         raise Exception(f"El archivo Excel está vacío o no contiene datos válidos: {str(e)}")
-    except pd.errors.ExcelFileError as e:
+    except (ValueError, OSError, IOError) as e:
         logger.error(f"Error al leer archivo Excel: {str(e)}")
         raise Exception(f"Error al leer el archivo Excel. Verifique que sea un archivo válido: {str(e)}")
     except ValueError as e:

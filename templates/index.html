@@ -8,7 +8,7 @@
         <div class="user-info">
             <span class="user-name">{{ current_user.username }}</span>
             <span class="user-role">{{ current_user.role }}</span>
-            <a href="{{ url_for('consultor.dashboard') }}" class="dashboard-btn">📊 Dashboard</a>
+            <a href="{{ url_for('consultor.dashboard') }}" class="dashboard-btn">Dashboard</a>
             <a href="{{ url_for('auth.logout') }}" class="logout-btn">Salir</a>
         </div>
     </header>
@@ -16,13 +16,13 @@
     <div class="reports-container">
         <!-- Reporte Individual -->
         <div class="report-card">
-            <div class="report-icon">📊</div>
+            <div class="report-icon"><i class="fas fa-chart-bar"></i></div>
             <h3>Reporte Individual</h3>
             <p>Procesa un archivo Excel de antigüedad de cartera</p>
             
             <div class="upload-zone" id="uploadZone1" onclick="document.getElementById('fileInput1').click()">
                 <div class="upload-content">
-                    <div class="upload-icon">📁</div>
+                    <div class="upload-icon"><i class="fas fa-folder-open"></i></div>
                     <p>Arrastra tu archivo aquí</p>
                     <small>o haz clic para seleccionar</small>
                 </div>
@@ -51,13 +51,13 @@
 
         <!-- Reporte Grupal -->
         <div class="report-card">
-            <div class="report-icon">👥</div>
+            <div class="report-icon"><i class="fas fa-users"></i></div>
             <h3>Reporte Grupal</h3>
             <p>Integra 5 archivos Excel para generar reporte consolidado</p>
             
             <div class="upload-zone" id="uploadZone2" onclick="document.getElementById('fileInput2').click()">
                 <div class="upload-content">
-                    <div class="upload-icon">📁</div>
+                    <div class="upload-icon"><i class="fas fa-folder-open"></i></div>
                     <p>Arrastra tus 5 archivos aquí</p>
                     <small>o haz clic para seleccionar</small>
                 </div>
@@ -158,6 +158,11 @@
 .report-icon {
     font-size: 48px;
     margin-bottom: 20px;
+    color: #007bff;
+}
+
+.report-icon i {
+    font-size: 48px;
 }
 
 .report-card h3 {
@@ -201,6 +206,11 @@
     font-size: 32px;
     margin-bottom: 16px;
     opacity: 0.7;
+    color: #007bff;
+}
+
+.upload-icon i {
+    font-size: 32px;
 }
 
 .upload-zone p {
@@ -260,6 +270,11 @@
     justify-content: space-between;
     align-items: center;
     font-size: 14px;
+}
+
+.file-item i {
+    margin-right: 8px;
+    color: #28a745;
 }
 
 .file-item.success {
@@ -400,7 +415,7 @@ function displayFileList(files, zoneNumber) {
         const fileType = detectFileType(file.name);
         html += `
             <div class="file-item ${fileType !== 'desconocido' ? 'success' : 'error'}">
-                <span>📊 ${file.name}</span>
+                <span><i class="fas fa-file-excel"></i> ${file.name}</span>
                 <span class="badge ${fileType !== 'desconocido' ? 'bg-success' : 'bg-danger'}">
                     ${fileType !== 'desconocido' ? fileType : 'Tipo desconocido'}
                 </span>

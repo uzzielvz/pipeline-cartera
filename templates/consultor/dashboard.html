@@ -35,15 +35,15 @@
     <!-- Acciones rápidas -->
     <div class="quick-actions">
         <a href="{{ url_for('consultor.reports') }}" class="action-btn">
-            📋 Ver Todos los Reportes
+            <i class="fas fa-list"></i> Ver Todos los Reportes
         </a>
         {% if current_user.is_admin() %}
             <a href="{{ url_for('index') }}" class="action-btn">
-                ⚙️ Generar Reportes
+                <i class="fas fa-cog"></i> Generar Reportes
             </a>
         {% endif %}
         <a href="{{ url_for('consultor.reports') }}?filter=recent" class="action-btn">
-            ⏰ Reportes Recientes
+            <i class="fas fa-clock"></i> Reportes Recientes
         </a>
     </div>
 
@@ -57,9 +57,9 @@
                     <div class="report-info">
                         <div class="report-type">
                             {% if report.report_type == 'individual' %}
-                                📊 Reporte de Antigüedad Individual
+                                <i class="fas fa-chart-bar"></i> Reporte de Antigüedad Individual
                             {% else %}
-                                👥 Reporte de Antigüedad Grupal
+                                <i class="fas fa-users"></i> Reporte de Antigüedad Grupal
                             {% endif %}
                         </div>
                         <div class="report-name">{{ report.filename }}</div>
@@ -69,12 +69,12 @@
                     </div>
                     <div class="report-actions">
                         <a href="{{ url_for('consultor.download_report', report_id=report.id) }}" 
-                           class="download-btn" title="Descargar">📥</a>
+                           class="download-btn" title="Descargar"><i class="fas fa-download"></i></a>
                         <a href="{{ url_for('consultor.view_report', report_id=report.id) }}" 
-                           class="view-btn" title="Ver detalles">👁️</a>
+                           class="view-btn" title="Ver detalles"><i class="fas fa-eye"></i></a>
                         {% if current_user.is_admin() %}
                             <button onclick="confirmDelete({{ report.id }}, '{{ report.filename }}')" 
-                                    class="delete-btn" title="Eliminar">🗑️</button>
+                                    class="delete-btn" title="Eliminar"><i class="fas fa-trash"></i></button>
                         {% endif %}
                     </div>
                 </div>
@@ -82,7 +82,7 @@
             </div>
         {% else %}
             <div class="empty-state">
-                <div class="empty-icon">📁</div>
+                <div class="empty-icon"><i class="fas fa-folder-open"></i></div>
                 <h4>No hay reportes recientes</h4>
                 <p>Los reportes generados aparecerán aquí</p>
             </div>
@@ -209,6 +209,10 @@ body {
     flex: 1;
     min-width: 200px;
     text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 }
 
 .action-btn:hover {
@@ -257,6 +261,13 @@ body {
     color: #007bff;
     font-weight: 500;
     margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.report-type i {
+    font-size: 14px;
 }
 
 .report-name {
@@ -324,6 +335,11 @@ body {
     font-size: 48px;
     margin-bottom: 16px;
     opacity: 0.5;
+    color: #6c757d;
+}
+
+.empty-icon i {
+    font-size: 48px;
 }
 
 .empty-state h4 {
