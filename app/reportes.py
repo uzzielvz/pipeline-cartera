@@ -125,17 +125,6 @@ def add_par_column(df, mora_column):
     
     return df[nuevas_columnas]
 
-def create_excel_hyperlink(worksheet, row, col, text, url):
-    """Crea un hipervínculo en Excel de forma segura"""
-    try:
-        if pd.notna(url) and str(url).strip() and str(url) != 'nan':
-            worksheet.cell(row=row, column=col).hyperlink = str(url)
-            worksheet.cell(row=row, column=col).value = str(text)
-        else:
-            worksheet.cell(row=row, column=col).value = str(text)
-    except Exception as e:
-        logger.warning(f"Error creando hipervínculo en fila {row}, columna {col}: {str(e)}")
-        worksheet.cell(row=row, column=col).value = str(text)
 
 def generate_valid_table_name(sheet_name):
     """
@@ -1268,79 +1257,8 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         nombre_archivo_salida = f'ReportedeAntigüedad_{fecha_actual}.xlsx'
         ruta_salida = os.path.join('uploads', nombre_archivo_salida)
         
-        # Verificar si existe el archivo ejemplo con macros VBA
-        # Buscar en el directorio raíz del proyecto
-        directorio_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        archivo_ejemplo = os.path.join(directorio_raiz, "ejemplo con hojas.xlsx")
-        
-        # También intentar en el directorio actual (por si acaso)
-        if not os.path.exists(archivo_ejemplo):
-            archivo_ejemplo_alt = "ejemplo con hojas.xlsx"
-            if os.path.exists(archivo_ejemplo_alt):
-                archivo_ejemplo = archivo_ejemplo_alt
-        
-        usar_plantilla = os.path.exists(archivo_ejemplo)
-        
-        if usar_plantilla:
-            logger.info(f"📋 Archivo ejemplo encontrado: {archivo_ejemplo}")
-        else:
-            logger.info(f"ℹ️ Archivo ejemplo no encontrado. Buscado en: {directorio_raiz}")
-        
-        if usar_plantilla:
-            try:
-                logger.info("📋 Usando archivo ejemplo como plantilla (con macros VBA)...")
-                # Copiar el archivo ejemplo como base (esto preserva las macros VBA)
-                import shutil
-                shutil.copy(archivo_ejemplo, ruta_salida)
-                
-                # Cargar el archivo copiado y eliminar hojas existentes
-                # IMPORTANTE: usar keep_vba=True para preservar macros
-                import openpyxl
-                wb_plantilla = openpyxl.load_workbook(ruta_salida, keep_vba=True)
-                
-                # Verificar que tiene macros
-                tiene_macros = hasattr(wb_plantilla, 'vba_archive') and wb_plantilla.vba_archive is not None
-                logger.info(f"🔍 Archivo tiene macros VBA: {tiene_macros}")
-                
-                # Eliminar hojas existentes (pero dejar al menos una para que Excel no falle)
-                hojas_a_eliminar = [sheet for sheet in wb_plantilla.sheetnames]
-                logger.info(f"🗑️ Eliminando {len(hojas_a_eliminar)} hojas existentes...")
-                
-                # Dejar la última hoja y eliminar las demás
-                if len(hojas_a_eliminar) > 1:
-                    for sheet_name in hojas_a_eliminar[:-1]:  # Eliminar todas excepto la última
-                        try:
-                            wb_plantilla.remove(wb_plantilla[sheet_name])
-                        except Exception as e:
-                            logger.warning(f"⚠️ No se pudo eliminar hoja '{sheet_name}': {str(e)}")
-                    
-                    # Eliminar la última hoja también (será reemplazada por nuestras hojas)
-                    try:
-                        ultima_hoja = hojas_a_eliminar[-1]
-                        wb_plantilla.remove(wb_plantilla[ultima_hoja])
-                        # Crear una hoja temporal para que Excel no falle
-                        hoja_temp = wb_plantilla.create_sheet("_temp")
-                        hoja_temp.sheet_state = 'hidden'  # Ocultarla
-                    except Exception as e:
-                        logger.warning(f"⚠️ No se pudo eliminar última hoja: {str(e)}")
-                
-                # Guardar preservando macros
-                wb_plantilla.save(ruta_salida)
-                wb_plantilla.close()
-                logger.info("✅ Plantilla creada con macros VBA preservadas")
-            except Exception as e:
-                logger.warning(f"⚠️ Error usando plantilla, creando archivo nuevo: {str(e)}")
-                import traceback
-                logger.warning(traceback.format_exc())
-                usar_plantilla = False
-        
-        # Crear el writer (abrir el archivo existente si usamos plantilla)
-        if usar_plantilla:
-            # Abrir el archivo existente (con macros preservadas)
-            writer = pd.ExcelWriter(ruta_salida, engine='openpyxl', mode='a', if_sheet_exists='replace')
-        else:
-            # Crear nuevo archivo
-            writer = pd.ExcelWriter(ruta_salida, engine='openpyxl')
+        # Crear nuevo archivo Excel
+        writer = pd.ExcelWriter(ruta_salida, engine='openpyxl')
         
         with writer:
             # --- PASO 6.0: Crear hoja "X_Coordinación" PRIMERO ---
@@ -2464,110 +2382,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name, incluir_columnas_adicionales=False)
                 aplicar_formato_final(worksheet_coord, df_coord_sin_links, es_hoja_mora=False)
             
-            # --- PASO 6.3: NO agregar hipervínculos - Las macros VBA manejarán el doble clic ---
-            # Las macros VBA en X_Coordinación y X_Recuperador se activan con doble clic
-            # No necesitamos hipervínculos, las macros crean las hojas Detail dinámicamente
-            logger.info("ℹ️ Las macros VBA manejarán el doble clic (no se agregan hipervínculos)")
-
         logger.info(f"Procesamiento completado exitosamente. Archivo generado: {ruta_salida}")
-        
-        # --- PASO 7: Intentar copiar macros VBA del archivo ejemplo usando zipfile ---
-        # Esto funciona incluso si no usamos el archivo como plantilla
-        try:
-            import zipfile
-            import shutil
-            
-            # Buscar archivo ejemplo en varias ubicaciones
-            posibles_rutas = [
-                os.path.join(directorio_raiz, "ejemplo con hojas.xlsx"),
-                "ejemplo con hojas.xlsx",
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ejemplo con hojas.xlsx"),
-            ]
-            
-            archivo_ejemplo_vba = None
-            for ruta in posibles_rutas:
-                if os.path.exists(ruta):
-                    archivo_ejemplo_vba = ruta
-                    break
-            
-            if archivo_ejemplo_vba:
-                logger.info(f"🔧 Intentando copiar macros VBA desde: {archivo_ejemplo_vba}")
-                
-                # Crear archivo temporal
-                archivo_temp = ruta_salida + ".tmp"
-                shutil.copy(ruta_salida, archivo_temp)
-                
-                # Abrir ambos archivos como ZIP
-                with zipfile.ZipFile(archivo_ejemplo_vba, 'r') as zip_ejemplo:
-                    with zipfile.ZipFile(archivo_temp, 'r') as zip_generado:
-                        # Crear nuevo archivo con hojas del generado y macros del ejemplo
-                        with zipfile.ZipFile(ruta_salida, 'w', zipfile.ZIP_DEFLATED) as zip_final:
-                            # Copiar todas las hojas y datos del archivo generado
-                            for item in zip_generado.namelist():
-                                # Copiar todo excepto vbaProject (lo copiaremos del ejemplo)
-                                if not item.startswith('xl/vbaProject') and 'vba' not in item.lower():
-                                    data = zip_generado.read(item)
-                                    zip_final.writestr(item, data)
-                            
-                            # Copiar las macros VBA del archivo ejemplo
-                            vba_copiado = False
-                            for item in zip_ejemplo.namelist():
-                                if item.startswith('xl/vbaProject') or 'vba' in item.lower():
-                                    try:
-                                        data = zip_ejemplo.read(item)
-                                        zip_final.writestr(item, data)
-                                        vba_copiado = True
-                                        logger.info(f"   ✅ Copiado: {item}")
-                                    except Exception as e:
-                                        logger.warning(f"   ⚠️ No se pudo copiar {item}: {str(e)}")
-                            
-                            # Copiar [Content_Types].xml del ejemplo si tiene referencias VBA
-                            try:
-                                content_types = zip_ejemplo.read('[Content_Types].xml')
-                                # Verificar si contiene referencias a vbaProject
-                                if b'vbaProject' in content_types:
-                                    zip_final.writestr('[Content_Types].xml', content_types)
-                                    logger.info("   ✅ Actualizado [Content_Types].xml con referencias VBA")
-                            except:
-                                pass
-                            
-                            if vba_copiado:
-                                logger.info("✅ Macros VBA copiadas exitosamente al archivo generado")
-                            else:
-                                logger.warning("⚠️ No se encontraron macros VBA en el archivo ejemplo")
-                
-                # Eliminar archivo temporal
-                if os.path.exists(archivo_temp):
-                    os.remove(archivo_temp)
-            else:
-                logger.info("ℹ️ Archivo ejemplo no encontrado para copiar macros VBA")
-                logger.info("   Buscado en:")
-                for ruta in posibles_rutas:
-                    logger.info(f"     - {ruta}")
-        except Exception as e:
-            logger.warning(f"⚠️ Error copiando macros VBA: {str(e)}")
-            import traceback
-            logger.warning(traceback.format_exc())
-        
-        # Verificar que las macros VBA se preservaron (si usamos plantilla)
-        if usar_plantilla:
-            try:
-                import openpyxl
-                wb_final = openpyxl.load_workbook(ruta_salida, keep_vba=True)
-                tiene_macros_final = hasattr(wb_final, 'vba_archive') and wb_final.vba_archive is not None
-                wb_final.close()
-                
-                if tiene_macros_final:
-                    logger.info("✅ Archivo generado con macros VBA preservadas correctamente")
-                    logger.info("   Las macros permiten crear hojas Detail dinámicamente al hacer doble clic")
-                else:
-                    logger.warning("⚠️ Las macros VBA no se preservaron después de escribir hojas")
-                    logger.warning("   Esto puede deberse a limitaciones de pandas ExcelWriter")
-            except Exception as e:
-                logger.warning(f"⚠️ Error verificando macros VBA: {str(e)}")
-        else:
-            logger.info("ℹ️ Archivo generado sin macros VBA (archivo ejemplo no encontrado)")
-            logger.info("   Para habilitar macros, coloca 'ejemplo con hojas.xlsx' en el directorio raíz del proyecto")
         
         return ruta_salida, len(coordinaciones_data)
         

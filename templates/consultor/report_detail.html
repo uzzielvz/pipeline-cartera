@@ -14,11 +14,11 @@
 
     <!-- Navegación -->
     <div class="navigation">
-        <a href="{{ url_for('consultor.dashboard') }}" class="nav-btn">🏠 Dashboard</a>
+        <a href="{{ url_for('consultor.dashboard') }}" class="nav-btn"><i class="fas fa-home"></i> Dashboard</a>
         {% if current_user.is_admin() %}
-            <a href="{{ url_for('index') }}" class="nav-btn">⚙️ Generar Reportes</a>
+            <a href="{{ url_for('index') }}" class="nav-btn"><i class="fas fa-cog"></i> Generar Reportes</a>
         {% endif %}
-        <a href="{{ url_for('consultor.reports') }}" class="nav-btn">📋 Todos los Reportes</a>
+        <a href="{{ url_for('consultor.reports') }}" class="nav-btn"><i class="fas fa-list"></i> Todos los Reportes</a>
     </div>
 
     <!-- Detalle del reporte -->
@@ -26,9 +26,9 @@
         <div class="report-header">
             <div class="report-icon">
                 {% if report.report_type == 'individual' %}
-                    📊
+                    <i class="fas fa-chart-bar"></i>
                 {% else %}
-                    👥
+                    <i class="fas fa-users"></i>
                 {% endif %}
             </div>
             <div class="report-info">
@@ -96,13 +96,13 @@
         <div class="report-actions">
             <a href="{{ url_for('consultor.download_report', report_id=report.id) }}" 
                class="action-btn primary">
-                📥 Descargar Reporte
+                <i class="fas fa-download"></i> Descargar Reporte
             </a>
             
             {% if current_user.is_admin() %}
                 <button onclick="confirmDelete({{ report.id }}, '{{ report.filename }}')" 
                         class="action-btn danger">
-                    🗑️ Eliminar Reporte
+                    <i class="fas fa-trash"></i> Eliminar Reporte
                 </button>
             {% endif %}
             
@@ -132,6 +132,34 @@
 </div>
 
 <style>
+.navigation {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.nav-btn {
+    background: white;
+    color: #007bff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 500;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    transition: all 0.2s;
+    border: 1px solid #e1e5e9;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-btn:hover {
+    background: #007bff;
+    color: white;
+    transform: translateY(-1px);
+}
+
 .report-detail {
     background: white;
     padding: 30px;
@@ -157,6 +185,11 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    color: #007bff;
+}
+
+.report-icon i {
+    font-size: 40px;
 }
 
 .report-info h2 {
