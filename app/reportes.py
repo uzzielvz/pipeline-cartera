@@ -1257,21 +1257,80 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         nombre_archivo_salida = f'ReportedeAntigüedad_{fecha_actual}.xlsx'
         ruta_salida = os.path.join('uploads', nombre_archivo_salida)
         
-        # Crear nuevo archivo Excel
-        writer = pd.ExcelWriter(ruta_salida, engine='openpyxl')
+        # Buscar plantilla con tablas dinámicas
+        directorio_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        plantilla_path = os.path.join(directorio_raiz, "PLANTILLA.xlsx")
+        usar_plantilla = os.path.exists(plantilla_path)
+        
+        if usar_plantilla:
+            # --- Flujo con plantilla: usar tablas dinámicas existentes ---
+            logger.info(f"📋 Plantilla con tablas dinámicas encontrada: {plantilla_path}")
+            import shutil
+            shutil.copy(plantilla_path, ruta_salida)
+            logger.info(f"📋 Plantilla copiada a: {ruta_salida}")
+            
+            # Abrir el archivo copiado con openpyxl para llenar R_Completo
+            import openpyxl
+            wb_plantilla = openpyxl.load_workbook(ruta_salida)
+            
+            # Preparar datos para R_Completo
+            df_r_completo = df_completo_sin_links.copy()
+            df_r_completo = agregar_columna_concepto_deposito(df_r_completo)
+            df_r_completo = agregar_columnas_riesgo_y_mora(df_r_completo)
+            
+            # Llenar hoja R_Completo con los datos
+            if 'R_Completo' in wb_plantilla.sheetnames:
+                ws_r_completo = wb_plantilla['R_Completo']
+                
+                # Escribir datos desde fila 3 (fila 2 tiene encabezados)
+                logger.info(f"📝 Escribiendo {len(df_r_completo)} filas en R_Completo...")
+                for row_idx, (_, row) in enumerate(df_r_completo.iterrows(), start=3):
+                    for col_idx, value in enumerate(row, start=1):
+                        cell = ws_r_completo.cell(row=row_idx, column=col_idx)
+                        if pd.isna(value):
+                            cell.value = None
+                        else:
+                            cell.value = value
+                
+                logger.info(f"✅ R_Completo llenado con {len(df_r_completo)} registros")
+            else:
+                logger.warning("⚠️ Hoja 'R_Completo' no encontrada en la plantilla")
+            
+            # Guardar cambios
+            wb_plantilla.save(ruta_salida)
+            wb_plantilla.close()
+            
+            # Configurar tablas dinámicas para que se actualicen automáticamente al abrir
+            # NOTA: Por ahora desactivado para pruebas - el usuario puede activar refreshOnLoad manualmente en la plantilla
+            logger.info("ℹ️ Para actualización automática de tablas dinámicas, configura 'Actualizar al abrir' en la plantilla")
+            
+            # Usar ExcelWriter en modo append para agregar las demás hojas
+            writer = pd.ExcelWriter(ruta_salida, engine='openpyxl', mode='a', if_sheet_exists='new')
+        else:
+            # --- Flujo sin plantilla: crear todo desde cero ---
+            logger.info(f"ℹ️ Plantilla no encontrada en: {plantilla_path}")
+            logger.info("   Generando archivo sin tablas dinámicas")
+            writer = pd.ExcelWriter(ruta_salida, engine='openpyxl')
         
         with writer:
-            # --- PASO 6.0: Crear hoja "X_Coordinación" PRIMERO ---
-            logger.info("Creando hoja 'X_Coordinación' (PRIMERA HOJA)...")
-            try:
-                df_x_coordinacion = crear_hoja_x_coordinacion(df_completo)
-                logger.info(f"🔍 DataFrame X_Coordinación creado: {len(df_x_coordinacion)} filas, {len(df_x_coordinacion.columns)} columnas")
-                logger.info(f"🔍 Columnas en df_x_coordinacion: {list(df_x_coordinacion.columns)}")
-            except Exception as e:
-                logger.error(f"❌ Error creando hoja X_Coordinación: {str(e)}")
-                import traceback
-                logger.error(traceback.format_exc())
-                df_x_coordinacion = pd.DataFrame()
+            # --- PASO 6.0: Crear hojas X_Coordinación y X_Recuperador (solo sin plantilla) ---
+            # Si usamos plantilla, estas hojas ya existen con tablas dinámicas
+            crear_hojas_resumen = not usar_plantilla
+            
+            if crear_hojas_resumen:
+                logger.info("Creando hoja 'X_Coordinación' (PRIMERA HOJA)...")
+                try:
+                    df_x_coordinacion = crear_hoja_x_coordinacion(df_completo)
+                    logger.info(f"🔍 DataFrame X_Coordinación creado: {len(df_x_coordinacion)} filas, {len(df_x_coordinacion.columns)} columnas")
+                    logger.info(f"🔍 Columnas en df_x_coordinacion: {list(df_x_coordinacion.columns)}")
+                except Exception as e:
+                    logger.error(f"❌ Error creando hoja X_Coordinación: {str(e)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    df_x_coordinacion = pd.DataFrame()
+            else:
+                df_x_coordinacion = pd.DataFrame()  # Vacío para saltar el bloque siguiente
+                logger.info("📋 Usando plantilla - X_Coordinación ya existe con tabla dinámica")
             
             if not df_x_coordinacion.empty:
                 # Reorganizar columnas del DataFrame para que coincidan con la estructura
@@ -1609,17 +1668,21 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 logger.warning(f"🔍 Columnas disponibles en df_completo: {list(df_completo.columns)[:20]}...")
                 logger.warning(f"🔍 Total columnas en df_completo: {len(df_completo.columns)}")
             
-            # --- PASO 6.1: Crear hoja "X_Recuperador" SEGUNDA ---
-            logger.info("Creando hoja 'X_Recuperador' (SEGUNDA HOJA)...")
-            try:
-                df_x_recuperador = crear_hoja_x_recuperador(df_completo)
-                logger.info(f"🔍 DataFrame X_Recuperador creado: {len(df_x_recuperador)} filas, {len(df_x_recuperador.columns)} columnas")
-                logger.info(f"🔍 Columnas en df_x_recuperador: {list(df_x_recuperador.columns)}")
-            except Exception as e:
-                logger.error(f"❌ Error creando hoja X_Recuperador: {str(e)}")
-                import traceback
-                logger.error(traceback.format_exc())
-                df_x_recuperador = pd.DataFrame()
+            # --- PASO 6.1: Crear hoja "X_Recuperador" SEGUNDA (solo sin plantilla) ---
+            if crear_hojas_resumen:
+                logger.info("Creando hoja 'X_Recuperador' (SEGUNDA HOJA)...")
+                try:
+                    df_x_recuperador = crear_hoja_x_recuperador(df_completo)
+                    logger.info(f"🔍 DataFrame X_Recuperador creado: {len(df_x_recuperador)} filas, {len(df_x_recuperador.columns)} columnas")
+                    logger.info(f"🔍 Columnas en df_x_recuperador: {list(df_x_recuperador.columns)}")
+                except Exception as e:
+                    logger.error(f"❌ Error creando hoja X_Recuperador: {str(e)}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    df_x_recuperador = pd.DataFrame()
+            else:
+                df_x_recuperador = pd.DataFrame()  # Vacío para saltar el bloque siguiente
+                logger.info("📋 Usando plantilla - X_Recuperador ya existe con tabla dinámica")
             
             if not df_x_recuperador.empty:
                 # Reorganizar columnas del DataFrame para que coincidan con la estructura
