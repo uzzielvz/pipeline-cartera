@@ -1259,7 +1259,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         
         # Buscar plantilla con tablas dinámicas
         directorio_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        plantilla_path = os.path.join(directorio_raiz, "PLANTILLA.xlsx")
+        plantilla_path = os.path.join(directorio_raiz, "PLANTIILA2.xlsx")
         usar_plantilla = os.path.exists(plantilla_path)
         
         if usar_plantilla:
@@ -2444,7 +2444,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Crear tabla formal de Excel para la hoja de coordinación y formato final
                 crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name, incluir_columnas_adicionales=False)
                 aplicar_formato_final(worksheet_coord, df_coord_sin_links, es_hoja_mora=False)
-            
+
         logger.info(f"Procesamiento completado exitosamente. Archivo generado: {ruta_salida}")
         
         return ruta_salida, len(coordinaciones_data)
