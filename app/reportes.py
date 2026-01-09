@@ -221,7 +221,7 @@ def asignar_rango_mora(dias_mora):
     - 16-30 días: '30'
     - 31-60 días: '60'
     - 61-90 días: '90'
-    - >90 días: '>90'
+    - >90 días: 'Mayor_90'
     """
     # Cambio: Asignar '0' en lugar de 'N/A' para casos nulos, negativos o menores a 1
     if pd.isna(dias_mora) or dias_mora < 1:
@@ -237,7 +237,7 @@ def asignar_rango_mora(dias_mora):
     elif 61 <= dias_mora <= 90:
         return '90'
     elif dias_mora > 90:
-        return '>90'
+        return 'Mayor_90'
     else:
         return '0'  # Cambio: '0' en lugar de 'N/A' para cualquier otro caso
 
