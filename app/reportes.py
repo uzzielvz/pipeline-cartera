@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 import urllib.parse
 from config import (
     ALLOWED_EXTENSIONS, UPLOAD_FOLDER, REPORTS_FOLDER, MAX_FILE_SIZE, COLUMN_MAPPING, 
-    DTYPE_CONFIG, LISTA_FRAUDE, EXCEL_CONFIG, COLORS, ADDITIONAL_COLUMNS,
+    DTYPE_CONFIG, LISTA_FRAUDE, CODIGOS_RECUPERADOR_EXCLUIR, EXCEL_CONFIG, COLORS, ADDITIONAL_COLUMNS,
     MORA_BLUE_COLUMNS, CURRENCY_COLUMNS_KEYWORDS, DATE_COLUMNS_KEYWORDS
 )
 
@@ -1102,6 +1102,21 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         registros_eliminados = registros_antes_filtrado - len(df_filtrado)
         logger.info(f"Se eliminaron {registros_eliminados} registros por códigos fraudulentos")
         
+        # --- PASO 2.1: Filtrar por códigos de recuperador a excluir ---
+        if CODIGOS_RECUPERADOR_EXCLUIR and 'Código recuperador' in df_filtrado.columns:
+            registros_antes_recup = len(df_filtrado)
+            # Normalizar códigos a 6 dígitos para comparar (la columna ya viene estandarizada)
+            codigos_excluir_norm = set()
+            for c in CODIGOS_RECUPERADOR_EXCLUIR:
+                s = str(c).strip()
+                if s.replace('.', '').replace('-', '').isdigit():
+                    codigos_excluir_norm.add(str(int(float(s))).zfill(6))
+                else:
+                    codigos_excluir_norm.add(s)
+            df_filtrado = df_filtrado[~df_filtrado['Código recuperador'].astype(str).str.zfill(6).isin(codigos_excluir_norm)]
+            eliminados_recup = registros_antes_recup - len(df_filtrado)
+            if eliminados_recup > 0:
+                logger.info(f"🔍 Filtro por recuperador: Excluidos códigos {CODIGOS_RECUPERADOR_EXCLUIR}. Registros: {registros_antes_recup} → {len(df_filtrado)} ({eliminados_recup} eliminados)")
         
         # Verificación de integridad de datos - ANTES de transformaciones (sobre datos filtrados)
         medio_comunic_1_antes = df_filtrado['Medio comunic. 1'].notna().sum() if 'Medio comunic. 1' in df_filtrado.columns else 0

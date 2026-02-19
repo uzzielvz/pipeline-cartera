@@ -34,13 +34,17 @@ DTYPE_CONFIG = {
     'Teléfono Referencia3': str
 }
 
-# Lista de códigos de fraude
+# Lista de códigos de fraude (Código acreditado)
 LISTA_FRAUDE = [
     "001041", "001005", "001023", "001018", "001014", "001024", "001025", "001042",
     "001019", "001026", "001048", "001049", "001050", "001051", "001028", "001002",
     "001008", "001034", "001010", "001045", "001044", "001029", "001007", "001032",
     "001022", "001000", "001040"
 ]
+
+# Lista de códigos de recuperador a excluir (todos los registros con estos recuperadores se descartan)
+# Ejemplo: ["001234", "005678"] - excluye todos los que tengan Código recuperador 001234 o 005678
+CODIGOS_RECUPERADOR_EXCLUIR = ["000124"]
 
 # Configuración de formato Excel
 EXCEL_CONFIG = {
