@@ -1102,10 +1102,13 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         registros_eliminados = registros_antes_filtrado - len(df_filtrado)
         logger.info(f"Se eliminaron {registros_eliminados} registros por códigos fraudulentos")
         
-        # --- PASO 2.1: Filtrar por códigos de recuperador a excluir ---
+        df_recup_000124_raw = None
+        df_recup_000124_sin_links = None
+        df_recup_000124_completo = None
+        
+        # --- PASO 2.1: Filtrar por códigos de recuperador a excluir (y guardar subset para hoja RECUPERADOR_000124) ---
         if CODIGOS_RECUPERADOR_EXCLUIR and 'Código recuperador' in df_filtrado.columns:
             registros_antes_recup = len(df_filtrado)
-            # Normalizar códigos a 6 dígitos para comparar (la columna ya viene estandarizada)
             codigos_excluir_norm = set()
             for c in CODIGOS_RECUPERADOR_EXCLUIR:
                 s = str(c).strip()
@@ -1113,7 +1116,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                     codigos_excluir_norm.add(str(int(float(s))).zfill(6))
                 else:
                     codigos_excluir_norm.add(s)
-            df_filtrado = df_filtrado[~df_filtrado['Código recuperador'].astype(str).str.zfill(6).isin(codigos_excluir_norm)]
+            mask_recup_excluir = df_filtrado['Código recuperador'].astype(str).str.zfill(6).isin(codigos_excluir_norm)
+            df_recup_000124_raw = df_filtrado[mask_recup_excluir].copy()
+            df_filtrado = df_filtrado[~mask_recup_excluir]
             eliminados_recup = registros_antes_recup - len(df_filtrado)
             if eliminados_recup > 0:
                 logger.info(f"🔍 Filtro por recuperador: Excluidos códigos {CODIGOS_RECUPERADOR_EXCLUIR}. Registros: {registros_antes_recup} → {len(df_filtrado)} ({eliminados_recup} eliminados)")
@@ -1176,6 +1181,30 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Eliminar columnas duplicadas
             df_completo_sin_links = df_completo_sin_links.loc[:, ~df_completo_sin_links.columns.duplicated()]
             logger.info(f"🗑️ Columnas duplicadas eliminadas")
+
+        # --- Pipeline para hoja RECUPERADOR_000124 (misma estructura que informe completo) ---
+        if df_recup_000124_raw is not None and len(df_recup_000124_raw) > 0:
+            dr = clean_phone_numbers(df_recup_000124_raw.copy())
+            if 'Ciclo' in dr.columns:
+                dr['Ciclo'] = pd.to_numeric(dr['Ciclo'], errors='coerce').fillna(0).astype(int).astype(str).str.zfill(2)
+            dr = add_geolocation_links(dr, columna_geolocalizacion)
+            dr = dr.sort_values(by=columna_mora, ascending=False).copy()
+            dr = add_par_column(dr, columna_mora)
+            if 'link_texto' in dr.columns and columna_geolocalizacion in dr.columns:
+                geo_idx = dr.columns.get_loc(columna_geolocalizacion)
+                dr.insert(geo_idx + 1, 'Link de Geolocalización', dr['link_texto'])
+            df_recup_000124_completo = dr.copy()
+            dr = dr.drop(columns=['link_texto', 'link_url'], errors='ignore')
+            if 'Código acreditado' in dr.columns:
+                cols = dr.columns.tolist()
+                cols.remove('Código acreditado')
+                cols.insert(0, 'Código acreditado')
+                dr = dr[cols]
+            dr = dr.loc[:, ~dr.columns.duplicated()] if dr.columns.duplicated().any() else dr
+            dr = agregar_columna_concepto_deposito(dr.copy())
+            dr = agregar_columnas_riesgo_y_mora(dr.copy())
+            df_recup_000124_sin_links = dr
+            logger.info(f"📋 Preparados {len(df_recup_000124_sin_links)} registros para hoja RECUPERADOR_000124")
 
         # --- PASO 3: Ordenar y añadir columnas calculadas (sobre datos filtrados) ---
         df_ordenado = df_filtrado.sort_values(by=columna_mora, ascending=False).copy()
@@ -2001,6 +2030,30 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Crear tabla y aplicar formato final
             crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe, incluir_columnas_adicionales=False)
             aplicar_formato_final(ws_informe, df_completo_sin_links, es_hoja_mora=False)
+
+            # --- Hoja RECUPERADOR_000124 (registros con código recuperador en CODIGOS_RECUPERADOR_EXCLUIR) ---
+            if df_recup_000124_sin_links is not None and len(df_recup_000124_sin_links) > 0:
+                df_recup_000124_sin_links.to_excel(writer, sheet_name='RECUPERADOR_000124', index=False, startrow=1)
+                ws_recup = writer.sheets['RECUPERADOR_000124']
+                if 'Código acreditado' in df_recup_000124_sin_links.columns:
+                    for col_idx in range(1, ws_recup.max_column + 1):
+                        if ws_recup.cell(row=2, column=col_idx).value == 'Código acreditado':
+                            for row in range(3, ws_recup.max_row + 1):
+                                ws_recup.cell(row=row, column=col_idx).number_format = '@'
+                            break
+                aplicar_formato_texto_concepto_deposito(ws_recup, df_recup_000124_sin_links)
+                aplicar_formato_porcentaje_mora(ws_recup, df_recup_000124_sin_links)
+                aplicar_formato_condicional(ws_recup, columna_mora, len(df_recup_000124_sin_links))
+                if 'Link de Geolocalización' in df_recup_000124_sin_links.columns and df_recup_000124_completo is not None:
+                    link_col_recup = df_recup_000124_sin_links.columns.get_loc('Link de Geolocalización') + 1
+                    for i, (_, row) in enumerate(df_recup_000124_completo.iterrows()):
+                        row_num = i + 3
+                        if 'link_texto' in df_recup_000124_completo.columns and 'link_url' in df_recup_000124_completo.columns:
+                            escribir_hipervinculo_excel(ws_recup, row_num, link_col_recup, row['link_texto'], row['link_url'])
+                crear_tabla_excel(ws_recup, df_recup_000124_sin_links, 'RECUPERADOR_000124', incluir_columnas_adicionales=False)
+                aplicar_formato_final(ws_recup, df_recup_000124_sin_links, es_hoja_mora=False)
+                logger.info(f"✅ Hoja RECUPERADOR_000124 creada con {len(df_recup_000124_sin_links)} registros")
+
             # --- PASO 6.1: Crear hoja "Mora" ---
             # Verificar columnas duplicadas antes de escribir hoja Mora
             columnas_duplicadas_mora = df_mora.columns[df_mora.columns.duplicated()].tolist()
@@ -2525,14 +2578,7 @@ def procesar_antiguedad():
         
         logger.info(f"Archivo subido exitosamente: {filename} ({file_size} bytes)")
         
-        # Verificar si se debe generar también el reporte de colaboradores
-        incluir_colaboradores = request.form.get('incluir_colaboradores', 'false').lower() == 'true'
-        logger.info(f"📋 Generar reporte de colaboradores: {incluir_colaboradores}")
-        
-        # Generar reporte principal (excluir códigos 001053 y 001145 si está marcado)
-        # Buscar tanto como strings como números (Excel puede convertirlos)
-        codigos_a_excluir = ['001053', '001145', 1053, 1145] if incluir_colaboradores else None
-        ruta_salida, num_coordinaciones = procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=codigos_a_excluir)
+        ruta_salida, num_coordinaciones = procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None)
         
         # Mover al directorio de reportes SIN modificar el nombre
         import shutil
@@ -2556,81 +2602,6 @@ def procesar_antiguedad():
         except Exception as e:
             logger.error(f"Error guardando reporte principal: {str(e)}")
             db.session.rollback()
-        
-        # Generar reporte de colaboradores si está marcado
-        if incluir_colaboradores:
-            try:
-                logger.info("📋 Generando reporte de colaboradores...")
-                
-                # Leer archivo original nuevamente
-                df_temp = pd.read_excel(archivo_path, engine='openpyxl', dtype=DTYPE_CONFIG, header=0)
-                df_temp = clean_dataframe_columns(df_temp)
-                
-                # DEBUG: Ver qué códigos hay
-                logger.info(f"🔍 Total registros en archivo: {len(df_temp)}")
-                logger.info(f"🔍 Columnas disponibles: {df_temp.columns.tolist()}")
-                if 'Código acreditado' in df_temp.columns:
-                    codigos_unicos = df_temp['Código acreditado'].unique()
-                    logger.info(f"🔍 Códigos únicos en archivo (primeros 10): {codigos_unicos[:10].tolist()}")
-                    logger.info(f"🔍 ¿Código 001053 existe? {'001053' in codigos_unicos}")
-                    logger.info(f"🔍 ¿Código 001145 existe? {'001145' in codigos_unicos}")
-                
-                # Filtrar SOLO los códigos de colaboradores (buscar como números y como strings)
-                codigos_colaboradores = ['001053', '001145', 1053, 1145]
-                df_colab = df_temp[df_temp['Código acreditado'].isin(codigos_colaboradores)]
-                
-                logger.info(f"🔍 Registros de colaboradores encontrados: {len(df_colab)}")
-                
-                if len(df_colab) > 0:
-                    # Guardar DataFrame filtrado temporalmente
-                    temp_colab_path = os.path.join(UPLOAD_FOLDER, f"temp_colab_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx")
-                    df_colab.to_excel(temp_colab_path, index=False, engine='openpyxl')
-                    
-                    # Procesar archivo temporal (sin excluir nada)
-                    ruta_colab, _ = procesar_reporte_antiguedad(temp_colab_path, codigos_a_excluir=None)
-                    
-                    # Renombrar para agregar "(Colab)"
-                    nombre_original = os.path.basename(ruta_colab)
-                    # Cambiar "ReportedeAntiguedad_DDMMYYYY.xlsx" a "ReportedeAntiguedad(Colab)_DDMMYYYY.xlsx"
-                    nombre_colab = nombre_original.replace('ReportedeAntiguedad_', 'ReportedeAntiguedad(Colab)_')
-                    if 'ReportedeAntigüedad_' in nombre_original:
-                        nombre_colab = nombre_original.replace('ReportedeAntigüedad_', 'ReportedeAntigüedad(Colab)_')
-                    
-                    ruta_colab_final = os.path.join(REPORTS_FOLDER, nombre_colab)
-                    
-                    # Mover directamente al directorio de reportes
-                    os.makedirs(REPORTS_FOLDER, exist_ok=True)
-                    shutil.move(ruta_colab, ruta_colab_final)
-                    logger.info(f"✅ Reporte de colaboradores movido: {nombre_colab}")
-                    
-                    # Guardar en historial
-                    try:
-                        file_size_colab = os.path.getsize(ruta_colab_final)
-                        report_colab = ReportHistory(
-                            user_id=current_user.id,
-                            report_type='colaboradores',
-                            filename=os.path.basename(ruta_colab_final),
-                            file_path=ruta_colab_final,
-                            file_size=file_size_colab
-                        )
-                        db.session.add(report_colab)
-                        db.session.commit()
-                        logger.info(f"✅ Reporte de colaboradores guardado en historial: {nombre_colab}")
-                    except Exception as e:
-                        logger.error(f"❌ Error guardando reporte de colaboradores en historial: {str(e)}")
-                        db.session.rollback()
-        
-        # Limpiar archivo temporal
-                    try:
-                        os.remove(temp_colab_path)
-                    except:
-                        pass
-                else:
-                    logger.warning("⚠️ No se encontraron registros de colaboradores")
-                    
-            except Exception as e:
-                logger.error(f"❌ Error generando reporte de colaboradores: {str(e)}")
-                # Continuar aunque falle
         
         # Limpiar archivo temporal original
         try:
