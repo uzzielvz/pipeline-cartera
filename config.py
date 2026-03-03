@@ -20,7 +20,19 @@ COLUMN_MAPPING = {
     'intereses_vencidos': 'Intereses vencidos',
     'comision_vencida': 'Comisión vencida',
     'recargos': 'Recargos',
-    'saldo_capital': 'Saldo capital'
+     'saldo_capital': 'Saldo capital',
+    'ultimo_pago': 'Último pago',
+    'periodicidad': 'Periodicidad'
+}
+
+# Mapeo Periodicidad (texto) a días para cálculo de Alerta
+PERIODICIDAD_A_DIAS = {
+    'semanal': 7,
+    'catorcenal': 14,
+    'quincenal': 15,
+    'mensual': 30,
+    'bimensual': 60,
+    'trimestral': 90
 }
 
 # Configuración de tipos de datos para prevenir pérdida de datos
@@ -61,7 +73,8 @@ COLORS = {
     'light_blue': 'DDEBF7',
     'green': 'C6EFCE',
     'blue': 'B3D9FF',
-    'light_green': 'E6FFE6'
+    'light_green': 'E6FFE6',
+    'alert_red': 'F4CCCC'
 }
 
 # Configuración de columnas adicionales
