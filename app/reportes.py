@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 import urllib.parse
 from config import (
     ALLOWED_EXTENSIONS, UPLOAD_FOLDER, REPORTS_FOLDER, MAX_FILE_SIZE, COLUMN_MAPPING, 
-    DTYPE_CONFIG, LISTA_FRAUDE, CODIGOS_RECUPERADOR_EXCLUIR, EXCEL_CONFIG, COLORS, ADDITIONAL_COLUMNS,
+    DTYPE_CONFIG, LISTA_FRAUDE, CODIGOS_RECUPERADOR_EXCLUIR, PERIODICIDAD_A_DIAS, EXCEL_CONFIG, COLORS, ADDITIONAL_COLUMNS,
     MORA_BLUE_COLUMNS, CURRENCY_COLUMNS_KEYWORDS, DATE_COLUMNS_KEYWORDS
 )
 
@@ -242,11 +242,14 @@ def asignar_rango_mora(dias_mora):
         return '0'  # Cambio: '0' en lugar de 'N/A' para cualquier otro caso
 
 def escribir_hipervinculo_excel(worksheet, row, col, texto, url):
-    """Escribe un hipervínculo en una celda de Excel"""
+    """Escribe un hipervínculo en una celda de Excel usando fórmula HYPERLINK (más confiable con openpyxl)."""
     cell = worksheet.cell(row=row, column=col)
-    cell.value = texto
-    cell.hyperlink = url
-    cell.font = Font(color="0000FF", underline="single")
+    if url and pd.notna(url) and str(url).strip():
+        # Escapar comillas dobles en texto y url para la fórmula
+        url_safe = str(url).replace('"', '""')
+        texto_safe = str(texto).replace('"', '""') if pd.notna(texto) and str(texto).strip() else 'Link'
+        cell.value = f'=HYPERLINK("{url_safe}","{texto_safe}")'
+        cell.font = Font(color="0000FF", underline="single")
 
 def generar_concepto_deposito(df):
     """
@@ -379,6 +382,68 @@ def agregar_columnas_riesgo_y_mora(df):
         df['% MORA'] = pct_mora
         logger.info("✅ Columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA' agregadas al final")
     
+    return df
+
+def _normalizar_texto_para_mapeo(s):
+    """Normaliza texto para búsqueda en mapeo (minúsculas, sin tildes)."""
+    if pd.isna(s):
+        return ''
+    s = str(s).strip().lower()
+    import unicodedata
+    s = unicodedata.normalize('NFD', s)
+    return ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+
+def agregar_columnas_dias_ultimo_pago_y_alerta(df):
+    """
+    Agrega columnas 'Días desde el último pago' y 'Alerta' al DataFrame.
+    Días = hoy - Último pago. Alerta = Sí si días > plazo (según Periodicidad).
+    Inserta después de '% MORA' si existe.
+    """
+    col_ultimo_pago = COLUMN_MAPPING.get('ultimo_pago', 'Último pago')
+    col_periodicidad = COLUMN_MAPPING.get('periodicidad', 'Periodicidad')
+    hoy = pd.Timestamp.now().normalize()
+
+    # 1. Días desde el último pago
+    if col_ultimo_pago in df.columns:
+        fechas = pd.to_datetime(df[col_ultimo_pago], errors='coerce')
+        dias_desde_ultimo = (hoy - fechas).dt.days
+    else:
+        dias_desde_ultimo = pd.Series([None] * len(df))
+
+    # 2. Plazo en días por fila (Periodicidad -> días)
+    def periodo_a_dias(val):
+        if pd.isna(val):
+            return 30
+        try:
+            v_num = float(val)
+            if v_num > 0:
+                return int(v_num)
+        except (ValueError, TypeError):
+            pass
+        k = _normalizar_texto_para_mapeo(val)
+        return PERIODICIDAD_A_DIAS.get(k, 30)
+
+    if col_periodicidad in df.columns:
+        plazo_dias = df[col_periodicidad].apply(periodo_a_dias)
+    else:
+        plazo_dias = pd.Series([30] * len(df))
+
+    # 3. Alerta = 1 si días_desde_ultimo > plazo_dias, 0 en caso contrario
+    alerta = pd.Series([0] * len(df), index=df.index)
+    mask = dias_desde_ultimo.notna() & (dias_desde_ultimo > plazo_dias)
+    alerta.loc[mask] = 1
+
+    # 4. Insertar después de '% MORA'
+    df = df.copy()
+    df['Días desde el último pago'] = dias_desde_ultimo
+    df['Alerta'] = alerta
+    if '% MORA' in df.columns:
+        cols = df.columns.tolist()
+        cols.remove('Días desde el último pago')
+        cols.remove('Alerta')
+        idx = cols.index('% MORA') + 1
+        df = df[cols[:idx] + ['Días desde el último pago', 'Alerta'] + cols[idx:]]
+    logger.info("✅ Columnas 'Días desde el último pago' y 'Alerta' agregadas")
     return df
 
 def limpiar_celda_segura(cell):
@@ -862,6 +927,20 @@ def aplicar_formato_porcentaje_mora(worksheet, df):
                 logger.info(f"✅ Formato de porcentaje aplicado a columna '% MORA' (columna {col_idx})")
                 break
 
+def aplicar_formato_alerta(worksheet, df):
+    """Aplica relleno rojo suave a celdas de columna 'Alerta' con valor 1."""
+    if 'Alerta' not in df.columns:
+        return
+    alert_fill = PatternFill(start_color=COLORS.get('alert_red', 'F4CCCC'), end_color=COLORS.get('alert_red', 'F4CCCC'), fill_type='solid')
+    for col_idx in range(1, worksheet.max_column + 1):
+        if worksheet.cell(row=2, column=col_idx).value == 'Alerta':
+            for row in range(3, worksheet.max_row + 1):
+                cell = worksheet.cell(row=row, column=col_idx)
+                if cell.value == 1 or cell.value == 1.0:
+                    cell.fill = alert_fill
+            logger.info(f"✅ Formato rojo suave aplicado a columna 'Alerta' (columna {col_idx})")
+            break
+
 def aplicar_formato_final(worksheet, df, es_hoja_mora=False):
     """Autoajuste de columnas, formato de moneda, fecha corta, y formatos especiales."""
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -888,9 +967,12 @@ def aplicar_formato_final(worksheet, df, es_hoja_mora=False):
             break
 
     # d) Formato de moneda en columnas conocidas del df
+    # Excluir columnas de días (que pueden contener "pago" en su nombre pero son numéricas enteras)
+    COLUMNAS_NO_MONEDA = {'días desde el último pago', 'dias desde el ultimo pago'}
     columnas_moneda = [
         col for col in df.columns
         if any(key in col.lower() for key in CURRENCY_COLUMNS_KEYWORDS)
+        and col.lower().strip() not in COLUMNAS_NO_MONEDA
     ]
     for col_name in columnas_moneda:
         if col_name in df.columns:
@@ -1203,6 +1285,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             dr = dr.loc[:, ~dr.columns.duplicated()] if dr.columns.duplicated().any() else dr
             dr = agregar_columna_concepto_deposito(dr.copy())
             dr = agregar_columnas_riesgo_y_mora(dr.copy())
+            dr = agregar_columnas_dias_ultimo_pago_y_alerta(dr)
             df_recup_000124_sin_links = dr
             logger.info(f"📋 Preparados {len(df_recup_000124_sin_links)} registros para hoja RECUPERADOR_000124")
 
@@ -1321,12 +1404,25 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             df_r_completo = df_completo_sin_links.copy()
             df_r_completo = agregar_columna_concepto_deposito(df_r_completo)
             df_r_completo = agregar_columnas_riesgo_y_mora(df_r_completo)
+            df_r_completo = agregar_columnas_dias_ultimo_pago_y_alerta(df_r_completo)
             
             # Llenar hoja R_Completo con los datos
             if 'R_Completo' in wb_plantilla.sheetnames:
                 ws_r_completo = wb_plantilla['R_Completo']
                 
-                # Escribir datos desde fila 3 (fila 2 tiene encabezados)
+                # Escribir encabezados en fila 2 (incluye "Días desde el último pago" y "Alerta")
+                for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                    cell = ws_r_completo.cell(row=2, column=col_idx, value=col_name)
+                    cell.font = Font(bold=True)
+                ws_r_completo.row_dimensions[2].height = EXCEL_CONFIG['header_height']
+                # Relleno azul en encabezado "Días de mora"
+                for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                    if col_name == COLUMN_MAPPING.get('mora', 'Días de mora'):
+                        ws_r_completo.cell(row=2, column=col_idx).fill = PatternFill(
+                            start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
+                        break
+                
+                # Escribir datos desde fila 3
                 logger.info(f"📝 Escribiendo {len(df_r_completo)} filas en R_Completo...")
                 for row_idx, (_, row) in enumerate(df_r_completo.iterrows(), start=3):
                     for col_idx, value in enumerate(row, start=1):
@@ -1335,6 +1431,32 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                             cell.value = None
                         else:
                             cell.value = value
+                
+                # Hipervínculos en columna 'Link de Geolocalización'
+                if 'Link de Geolocalización' in df_r_completo.columns and 'link_texto' in df_completo.columns:
+                    link_col_r = df_r_completo.columns.get_loc('Link de Geolocalización') + 1
+                    for i, (_, fila) in enumerate(df_completo.iterrows()):
+                        row_num = i + 3
+                        escribir_hipervinculo_excel(ws_r_completo, row_num, link_col_r, fila.get('link_texto'), fila.get('link_url'))
+
+                # Formato condicional degradado en columna 'Días de mora'
+                col_mora_nombre = COLUMN_MAPPING.get('mora', 'Días de mora')
+                aplicar_formato_condicional(ws_r_completo, col_mora_nombre, len(df_r_completo))
+
+                # Aplicar formatos de porcentaje (% MORA) y Alerta (relleno rojo)
+                aplicar_formato_porcentaje_mora(ws_r_completo, df_r_completo)
+                aplicar_formato_alerta(ws_r_completo, df_r_completo)
+                
+                # Actualizar rango de la tabla existente para abarcar todos los datos escritos
+                num_filas_escritas = len(df_r_completo)
+                num_cols = len(df_r_completo.columns)
+                ultima_col_letra = get_column_letter(num_cols)
+                ultima_fila = num_filas_escritas + 2  # fila 2 encabezado + filas de datos
+                nuevo_rango = f"A2:{ultima_col_letra}{ultima_fila}"
+                if hasattr(ws_r_completo, 'tables') and ws_r_completo.tables:
+                    for t_name in list(ws_r_completo.tables.keys()):
+                        ws_r_completo.tables[t_name].ref = nuevo_rango
+                        logger.info(f"✅ Rango de tabla '{t_name}' en R_Completo actualizado a {nuevo_rango}")
                 
                 logger.info(f"✅ R_Completo llenado con {len(df_r_completo)} registros")
             else:
@@ -1991,7 +2113,8 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             
             # Agregar columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA'
             df_completo_sin_links = agregar_columnas_riesgo_y_mora(df_completo_sin_links.copy())
-            
+            df_completo_sin_links = agregar_columnas_dias_ultimo_pago_y_alerta(df_completo_sin_links)
+
             df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, index=False, startrow=1)
             ws_informe = writer.sheets[hoja_informe]
             
@@ -2009,9 +2132,6 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Aplicar formato de texto a 'Concepto Depósito'
             aplicar_formato_texto_concepto_deposito(ws_informe, df_completo_sin_links)
             
-            # Aplicar formato decimal a '% MORA'
-            aplicar_formato_porcentaje_mora(ws_informe, df_completo_sin_links)
-            
             # Aplicar formato condicional a la hoja de informe completo
             aplicar_formato_condicional(ws_informe, columna_mora, len(df_completo))
             
@@ -2019,7 +2139,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             if 'Link de Geolocalización' in df_completo_sin_links.columns:
                 link_col = df_completo_sin_links.columns.get_loc('Link de Geolocalización') + 1  # +1 porque Excel es 1-indexado
                 
-                # Escribir hipervínculos usando los datos originales de df_completo
+                # Escribir hipervínculos usando fórmula HYPERLINK (persisten mejor con openpyxl)
                 for i, (idx, row) in enumerate(df_completo.iterrows()):
                     row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
                     if 'link_texto' in df_completo.columns and 'link_url' in df_completo.columns:
@@ -2027,9 +2147,12 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                         url = row['link_url']
                         escribir_hipervinculo_excel(ws_informe, row_num, link_col, texto, url)
             
-            # Crear tabla y aplicar formato final
-            crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe, incluir_columnas_adicionales=False)
+            # Aplicar formato final y formatos específicos antes de crear la tabla
             aplicar_formato_final(ws_informe, df_completo_sin_links, es_hoja_mora=False)
+            aplicar_formato_porcentaje_mora(ws_informe, df_completo_sin_links)
+            aplicar_formato_alerta(ws_informe, df_completo_sin_links)
+            # Crear tabla al final para no afectar hipervínculos ni formato condicional
+            crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe, incluir_columnas_adicionales=False)
 
             # --- Hoja RECUPERADOR_000124 (registros con código recuperador en CODIGOS_RECUPERADOR_EXCLUIR) ---
             if df_recup_000124_sin_links is not None and len(df_recup_000124_sin_links) > 0:
@@ -2042,7 +2165,6 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                                 ws_recup.cell(row=row, column=col_idx).number_format = '@'
                             break
                 aplicar_formato_texto_concepto_deposito(ws_recup, df_recup_000124_sin_links)
-                aplicar_formato_porcentaje_mora(ws_recup, df_recup_000124_sin_links)
                 aplicar_formato_condicional(ws_recup, columna_mora, len(df_recup_000124_sin_links))
                 if 'Link de Geolocalización' in df_recup_000124_sin_links.columns and df_recup_000124_completo is not None:
                     link_col_recup = df_recup_000124_sin_links.columns.get_loc('Link de Geolocalización') + 1
@@ -2050,8 +2172,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                         row_num = i + 3
                         if 'link_texto' in df_recup_000124_completo.columns and 'link_url' in df_recup_000124_completo.columns:
                             escribir_hipervinculo_excel(ws_recup, row_num, link_col_recup, row['link_texto'], row['link_url'])
-                crear_tabla_excel(ws_recup, df_recup_000124_sin_links, 'RECUPERADOR_000124', incluir_columnas_adicionales=False)
                 aplicar_formato_final(ws_recup, df_recup_000124_sin_links, es_hoja_mora=False)
+                aplicar_formato_porcentaje_mora(ws_recup, df_recup_000124_sin_links)
+                aplicar_formato_alerta(ws_recup, df_recup_000124_sin_links)
+                crear_tabla_excel(ws_recup, df_recup_000124_sin_links, 'RECUPERADOR_000124', incluir_columnas_adicionales=False)
                 logger.info(f"✅ Hoja RECUPERADOR_000124 creada con {len(df_recup_000124_sin_links)} registros")
 
             # --- PASO 6.1: Crear hoja "Mora" ---
@@ -2100,12 +2224,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Aplicar formato de texto a 'Concepto Depósito'
             aplicar_formato_texto_concepto_deposito(worksheet_mora, df_mora_sin_links)
             
-            # Aplicar formato decimal a '% MORA'
-            aplicar_formato_porcentaje_mora(worksheet_mora, df_mora_sin_links)
-            
             # Crear tabla formal de Excel para la hoja Mora y formato final
             crear_tabla_excel(worksheet_mora, df_mora_sin_links, 'Mora', incluir_columnas_adicionales=True)
             aplicar_formato_final(worksheet_mora, df_mora_sin_links, es_hoja_mora=True)
+            aplicar_formato_porcentaje_mora(worksheet_mora, df_mora_sin_links)
 
             # --- PASO 6.1.1: Crear hoja "Cuentas con saldo vencido" ---
             if df_saldo_vencido is not None and len(df_saldo_vencido) > 0:
@@ -2142,9 +2264,6 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Aplicar formato de texto a 'Concepto Depósito'
                 aplicar_formato_texto_concepto_deposito(worksheet_saldo, df_saldo_vencido_sin_links)
                 
-                # Aplicar formato decimal a '% MORA'
-                aplicar_formato_porcentaje_mora(worksheet_saldo, df_saldo_vencido_sin_links)
-                
                 # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
                 if 'Link de Geolocalización' in df_saldo_vencido_sin_links.columns:
                     link_col = df_saldo_vencido_sin_links.columns.get_loc('Link de Geolocalización') + 1  # +1 porque Excel es 1-indexado
@@ -2160,6 +2279,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Crear tabla formal de Excel para la hoja Saldo Vencido y formato final
                 crear_tabla_excel(worksheet_saldo, df_saldo_vencido_sin_links, 'Cuentas con saldo vencido', incluir_columnas_adicionales=False)
                 aplicar_formato_final(worksheet_saldo, df_saldo_vencido_sin_links, es_hoja_mora=False)
+                aplicar_formato_porcentaje_mora(worksheet_saldo, df_saldo_vencido_sin_links)
                 
                 logger.info(f"✅ Hoja 'Cuentas con saldo vencido' creada con {len(df_saldo_vencido)} registros")
             else:
@@ -2506,12 +2626,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Aplicar formato de texto a 'Concepto Depósito'
                 aplicar_formato_texto_concepto_deposito(worksheet_coord, df_coord_sin_links)
                 
-                # Aplicar formato decimal a '% MORA'
-                aplicar_formato_porcentaje_mora(worksheet_coord, df_coord_sin_links)
-                
                 # Crear tabla formal de Excel para la hoja de coordinación y formato final
                 crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name, incluir_columnas_adicionales=False)
                 aplicar_formato_final(worksheet_coord, df_coord_sin_links, es_hoja_mora=False)
+                aplicar_formato_porcentaje_mora(worksheet_coord, df_coord_sin_links)
 
         logger.info(f"Procesamiento completado exitosamente. Archivo generado: {ruta_salida}")
         
