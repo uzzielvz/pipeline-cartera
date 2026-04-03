@@ -213,33 +213,33 @@ def generar_link_google_maps(geolocalizacion):
 def asignar_rango_mora(dias_mora):
     """
     Asigna valor PAR (Período de Antigüedad de Recuperación) basado en días de mora.
-    
+
     Reglas de categorización:
     - 0 días o sin mora: '0'
     - 1-7 días: '7'
-    - 8-15 días: '15' 
+    - 8-15 días: '15'
     - 16-30 días: '30'
     - 31-60 días: '60'
     - 61-90 días: '90'
-    - >90 días: 'Mayor_90'
+    - 91-180 días: 'Mayor_90'
+    - >180 días: 'Mayor_180'
     """
-    # Cambio: Asignar '0' en lugar de 'N/A' para casos nulos, negativos o menores a 1
     if pd.isna(dias_mora) or dias_mora < 1:
         return '0'
-    elif 1 <= dias_mora <= 7:
+    elif dias_mora <= 7:
         return '7'
-    elif 8 <= dias_mora <= 15:
+    elif dias_mora <= 15:
         return '15'
-    elif 16 <= dias_mora <= 30:
+    elif dias_mora <= 30:
         return '30'
-    elif 31 <= dias_mora <= 60:
+    elif dias_mora <= 60:
         return '60'
-    elif 61 <= dias_mora <= 90:
+    elif dias_mora <= 90:
         return '90'
-    elif dias_mora > 90:
+    elif dias_mora <= 180:
         return 'Mayor_90'
     else:
-        return '0'  # Cambio: '0' en lugar de 'N/A' para cualquier otro caso
+        return 'Mayor_180'
 
 def escribir_hipervinculo_excel(worksheet, row, col, texto, url):
     """Escribe un hipervínculo en una celda de Excel usando fórmula HYPERLINK (más confiable con openpyxl)."""
