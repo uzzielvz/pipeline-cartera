@@ -446,6 +446,49 @@ def agregar_columnas_dias_ultimo_pago_y_alerta(df):
     logger.info("✅ Columnas 'Días desde el último pago' y 'Alerta' agregadas")
     return df
 
+def agregar_columnas_nuevas(df):
+    """
+    Agrega las 3 columnas nuevas al final del DataFrame (iteración 3):
+    - Cuotas sin pagar  = Días desde el último pago / días de periodicidad (decimal)
+    - Saldo_Riesgo_total = Saldo total si mora > 30, sino 0  (nueva definición)
+    - Combinado         = cuotas sin pagar redondeadas si mora <= 30, sino Saldo_Riesgo_total
+    """
+    col_mora         = 'Días de mora'
+    col_dias_pago    = 'Días desde el último pago'
+    col_periodicidad = COLUMN_MAPPING.get('periodicidad', 'Periodicidad')
+    col_saldo_total  = 'Saldo total'
+    df = df.copy()
+
+    def _periodo_a_dias(val):
+        if pd.isna(val):
+            return 30
+        try:
+            v = float(val)
+            if v > 0:
+                return int(v)
+        except (ValueError, TypeError):
+            pass
+        return PERIODICIDAD_A_DIAS.get(_normalizar_texto_para_mapeo(val), 30)
+
+    plazo = df[col_periodicidad].apply(_periodo_a_dias) if col_periodicidad in df.columns else pd.Series([30]*len(df), index=df.index)
+    dias_pago = df[col_dias_pago] if col_dias_pago in df.columns else pd.Series([0]*len(df), index=df.index)
+    mora      = df[col_mora]      if col_mora      in df.columns else pd.Series([0]*len(df), index=df.index)
+    saldo_t   = df[col_saldo_total] if col_saldo_total in df.columns else pd.Series([0]*len(df), index=df.index)
+
+    cuotas = dias_pago / plazo.replace(0, 1)
+
+    saldo_riesgo_nuevo = saldo_t.where(mora > 30, other=0)
+
+    combinado = cuotas.apply(round).where(mora <= 30, other=saldo_riesgo_nuevo)
+
+    df['Cuotas sin pagar']   = cuotas
+    df['Saldo_Riesgo_total'] = saldo_riesgo_nuevo
+    df['Combinado']          = combinado
+
+    logger.info("✅ Columnas 'Cuotas sin pagar', 'Saldo_Riesgo_total' y 'Combinado' agregadas")
+    return df
+
+
 def limpiar_celda_segura(cell):
     """
     Limpia una celda de forma segura, verificando si es MergedCell (solo lectura).
@@ -1405,7 +1448,8 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             df_r_completo = agregar_columna_concepto_deposito(df_r_completo)
             df_r_completo = agregar_columnas_riesgo_y_mora(df_r_completo)
             df_r_completo = agregar_columnas_dias_ultimo_pago_y_alerta(df_r_completo)
-            
+            df_r_completo = agregar_columnas_nuevas(df_r_completo)
+
             # Llenar hoja R_Completo con los datos
             if 'R_Completo' in wb_plantilla.sheetnames:
                 ws_r_completo = wb_plantilla['R_Completo']
