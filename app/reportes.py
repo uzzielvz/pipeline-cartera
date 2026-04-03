@@ -2577,59 +2577,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             
             logger.info("✅ Hoja 'Liquidación anticipada' creada")
 
-            # --- PASO 6.2: Crear hojas por coordinación ---
-            for coord_name, df_coord in coordinaciones_data.items():
-                sheet_name = coord_name.replace(' ', '_')[:31]
-                
-                # Verificar columnas duplicadas antes de escribir hoja de coordinación
-                columnas_duplicadas_coord = df_coord.columns[df_coord.columns.duplicated()].tolist()
-                if columnas_duplicadas_coord:
-                    logger.error(f"🚨 COLUMNAS DUPLICADAS encontradas en df_coord '{coord_name}': {columnas_duplicadas_coord}")
-                    # Eliminar columnas duplicadas
-                    df_coord = df_coord.loc[:, ~df_coord.columns.duplicated()]
-                    logger.info(f"🗑️ Columnas duplicadas eliminadas de df_coord '{coord_name}'")
-                
-                # DIAGNÓSTICO FINAL: Verificar columnas PAR en df_coord
-                columnas_par_coord = [col for col in df_coord.columns if 'par' in str(col).lower()]
-                if columnas_par_coord:
-                    logger.error(f"🚨 ERROR CRÍTICO: Columnas PAR en coordinación '{coord_name}' FINAL: {columnas_par_coord}")
-                else:
-                    logger.info(f"✅ Coordinación '{coord_name}' FINAL sin columnas PAR")
-                
-                # Crear DataFrame sin las columnas temporales de links para escritura en Excel
-                df_coord_sin_links = df_coord.drop(columns=['link_texto', 'link_url'], errors='ignore')
-                
-                # Agregar columna 'Concepto Depósito' a la hoja de coordinación
-                df_coord_sin_links = agregar_columna_concepto_deposito(df_coord_sin_links.copy())
-                
-                # Agregar columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA'
-                df_coord_sin_links = agregar_columnas_riesgo_y_mora(df_coord_sin_links.copy())
-                
-                df_coord_sin_links.to_excel(writer, sheet_name=sheet_name, index=False, startrow=1)
-                
-                # Aplicar formato condicional
-                worksheet_coord = writer.sheets[sheet_name]
-                aplicar_formato_condicional(worksheet_coord, columna_mora, len(df_coord))
-                
-                # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
-                if 'Link de Geolocalización' in df_coord_sin_links.columns:
-                    link_col = df_coord_sin_links.columns.get_loc('Link de Geolocalización') + 1  # +1 porque Excel es 1-indexado
-                    
-                    # Escribir hipervínculos usando los datos originales de df_coord
-                    for i, (idx, row) in enumerate(df_coord.iterrows()):
-                        row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
-                        if 'link_texto' in df_coord.columns and 'link_url' in df_coord.columns:
-                            texto = row['link_texto']
-                            url = row['link_url']
-                            escribir_hipervinculo_excel(worksheet_coord, row_num, link_col, texto, url)
-
-                # Aplicar formato de texto a 'Concepto Depósito'
-                aplicar_formato_texto_concepto_deposito(worksheet_coord, df_coord_sin_links)
-                
-                # Crear tabla formal de Excel para la hoja de coordinación y formato final
-                crear_tabla_excel(worksheet_coord, df_coord_sin_links, sheet_name, incluir_columnas_adicionales=False)
-                aplicar_formato_final(worksheet_coord, df_coord_sin_links, es_hoja_mora=False)
-                aplicar_formato_porcentaje_mora(worksheet_coord, df_coord_sin_links)
+            # --- PASO 6.2: Crear hojas por coordinación --- [ELIMINADO - iteración 1]
+            # Las hojas por coordinación (Atlacomulco, Maravatio, Metepec, etc.) fueron eliminadas
+            # del nuevo diseño. El desglose por coordinación ahora vive en los pivots de X_Coordinación.
+            pass
 
         logger.info(f"Procesamiento completado exitosamente. Archivo generado: {ruta_salida}")
         
