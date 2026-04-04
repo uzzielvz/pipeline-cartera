@@ -1505,7 +1505,28 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 logger.info(f"✅ R_Completo llenado con {len(df_r_completo)} registros")
             else:
                 logger.warning("⚠️ Hoja 'R_Completo' no encontrada en la plantilla")
-            
+
+            # --- ITERACIÓN 4: Crear hoja de fecha (copia idéntica de R_Completo) ---
+            nombre_hoja_fecha = fecha_actual  # DDMMYYYY
+            logger.info(f"📋 Creando hoja de fecha '{nombre_hoja_fecha}' (copia de R_Completo)...")
+            if nombre_hoja_fecha in wb_plantilla.sheetnames:
+                del wb_plantilla[nombre_hoja_fecha]
+            ws_fecha = wb_plantilla.create_sheet(title=nombre_hoja_fecha)
+
+            # Encabezados en fila 2
+            for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                cell = ws_fecha.cell(row=2, column=col_idx, value=col_name)
+                cell.font = Font(bold=True)
+            ws_fecha.row_dimensions[2].height = EXCEL_CONFIG['header_height']
+
+            # Datos desde fila 3
+            for row_idx, (_, row) in enumerate(df_r_completo.iterrows(), start=3):
+                for col_idx, value in enumerate(row, start=1):
+                    cell = ws_fecha.cell(row=row_idx, column=col_idx)
+                    cell.value = None if pd.isna(value) else value
+
+            logger.info(f"✅ Hoja '{nombre_hoja_fecha}' creada con {len(df_r_completo)} registros")
+
             # Guardar cambios
             wb_plantilla.save(ruta_salida)
             wb_plantilla.close()
