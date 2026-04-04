@@ -475,11 +475,11 @@ def agregar_columnas_nuevas(df):
     mora      = df[col_mora]      if col_mora      in df.columns else pd.Series([0]*len(df), index=df.index)
     saldo_t   = df[col_saldo_total] if col_saldo_total in df.columns else pd.Series([0]*len(df), index=df.index)
 
-    cuotas = dias_pago / plazo.replace(0, 1)
+    cuotas = (dias_pago / plazo.replace(0, 1)).apply(lambda x: int(x) if pd.notna(x) else x)
 
     saldo_riesgo_nuevo = saldo_t.where(mora > 30, other=0)
 
-    combinado = cuotas.round(0).where(mora <= 30, other=saldo_riesgo_nuevo)
+    combinado = cuotas.where(mora <= 30, other=saldo_riesgo_nuevo)
 
     df['Cuotas sin pagar']   = cuotas
     df['Saldo_Riesgo_total'] = saldo_riesgo_nuevo
