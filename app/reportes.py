@@ -1538,7 +1538,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             col_inicio_ciclo = 'Inicio ciclo'
             if col_inicio_ciclo in df_r_completo.columns:
                 serie_ciclo = pd.to_datetime(df_r_completo[col_inicio_ciclo], errors='coerce')
-                df_siguiente = df_r_completo[serie_ciclo.dt.month == mes_siguiente].copy()
+                df_siguiente = df_r_completo[
+                    (serie_ciclo.dt.month == mes_siguiente) & (serie_ciclo.dt.year == anio_siguiente)
+                ].copy()
             else:
                 logger.warning(f"⚠️ Columna '{col_inicio_ciclo}' no encontrada — hoja '{nombre_hoja_siguiente}' se crea vacía")
                 df_siguiente = df_r_completo.iloc[0:0].copy()
