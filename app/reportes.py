@@ -1525,21 +1525,34 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                     cell = ws_fecha.cell(row=row_idx, column=col_idx)
                     cell.value = None if pd.isna(value) else value
 
-            logger.info(f"✅ Hoja '{nombre_hoja_fecha}' creada con {len(df_r_completo)} registros")
+            # Bug 4-B: agregar tabla formal a ws_fecha
+            num_filas_fecha = len(df_r_completo)
+            num_cols_fecha = len(df_r_completo.columns)
+            ultima_col_fecha = get_column_letter(num_cols_fecha)
+            ultima_fila_fecha = num_filas_fecha + 2  # fila 2 encabezado + datos
+            tabla_fecha = Table(
+                displayName=f"T_{nombre_hoja_fecha}",
+                ref=f"A2:{ultima_col_fecha}{ultima_fila_fecha}"
+            )
+            tabla_fecha.tableStyleInfo = TableStyleInfo(
+                name=EXCEL_CONFIG['table_style'], showFirstColumn=False,
+                showLastColumn=False, showRowStripes=True, showColumnStripes=False
+            )
+            ws_fecha.add_table(tabla_fecha)
+            logger.info(f"✅ Hoja '{nombre_hoja_fecha}' creada con {len(df_r_completo)} registros y tabla formal")
 
-            # --- ITERACIÓN 5: Crear hoja del siguiente período (ej: Abril2026) ---
-            MESES_ES = {1:'Enero',2:'Febrero',3:'Marzo',4:'Abril',5:'Mayo',6:'Junio',
-                        7:'Julio',8:'Agosto',9:'Septiembre',10:'Octubre',11:'Noviembre',12:'Diciembre'}
-            mes_siguiente = (fecha_reporte.month % 12) + 1
-            anio_siguiente = fecha_reporte.year + (1 if mes_siguiente == 1 else 0)
-            nombre_hoja_siguiente = f"{MESES_ES[mes_siguiente]}{anio_siguiente}"
-            logger.info(f"📋 Creando hoja del siguiente período '{nombre_hoja_siguiente}'...")
+            # --- ITERACIÓN 5: Crear hoja Abril2026 (hardcoded por ahora) ---
+            # Bug 5-A: el corte es abril 2026, mes_siguiente daría mayo — hardcodear abril 2026
+            mes_filtro = 4
+            anio_filtro = 2026
+            nombre_hoja_siguiente = "Abril2026"
+            logger.info(f"📋 Creando hoja '{nombre_hoja_siguiente}' (Inicio ciclo = abril 2026)...")
 
             col_inicio_ciclo = 'Inicio ciclo'
             if col_inicio_ciclo in df_r_completo.columns:
                 serie_ciclo = pd.to_datetime(df_r_completo[col_inicio_ciclo], errors='coerce')
                 df_siguiente = df_r_completo[
-                    (serie_ciclo.dt.month == mes_siguiente) & (serie_ciclo.dt.year == anio_siguiente)
+                    (serie_ciclo.dt.month == mes_filtro) & (serie_ciclo.dt.year == anio_filtro)
                 ].copy()
             else:
                 logger.warning(f"⚠️ Columna '{col_inicio_ciclo}' no encontrada — hoja '{nombre_hoja_siguiente}' se crea vacía")
@@ -1561,7 +1574,20 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                     cell = ws_siguiente.cell(row=row_idx, column=col_idx)
                     cell.value = None if pd.isna(value) else value
 
-            logger.info(f"✅ Hoja '{nombre_hoja_siguiente}' creada con {len(df_siguiente)} registros (Inicio ciclo = {MESES_ES[mes_siguiente]})")
+            # Bug 5-B: agregar tabla formal a ws_siguiente
+            num_filas_sig = len(df_siguiente)
+            ultima_col_sig = get_column_letter(len(df_r_completo.columns))
+            ultima_fila_sig = max(num_filas_sig + 2, 3)  # mínimo fila 3 aunque no haya datos
+            tabla_siguiente = Table(
+                displayName="T_Abril2026",
+                ref=f"A2:{ultima_col_sig}{ultima_fila_sig}"
+            )
+            tabla_siguiente.tableStyleInfo = TableStyleInfo(
+                name=EXCEL_CONFIG['table_style'], showFirstColumn=False,
+                showLastColumn=False, showRowStripes=True, showColumnStripes=False
+            )
+            ws_siguiente.add_table(tabla_siguiente)
+            logger.info(f"✅ Hoja '{nombre_hoja_siguiente}' creada con {len(df_siguiente)} registros y tabla formal")
 
             # Guardar cambios
             wb_plantilla.save(ruta_salida)
@@ -2216,44 +2242,36 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             df_completo_sin_links = agregar_columnas_riesgo_y_mora(df_completo_sin_links.copy())
             df_completo_sin_links = agregar_columnas_dias_ultimo_pago_y_alerta(df_completo_sin_links)
 
-            df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, index=False, startrow=1)
-            ws_informe = writer.sheets[hoja_informe]
-            
-            # *** NUEVO: Aplicar formato de texto a 'Código acreditado' y 'Concepto Depósito' para preservar ceros ***
-            if 'Código acreditado' in df_completo_sin_links.columns:
-                # Buscar la columna 'Código acreditado' en el Excel
-                for col_idx in range(1, ws_informe.max_column + 1):
-                    if ws_informe.cell(row=2, column=col_idx).value == 'Código acreditado':
-                        # Aplicar formato de texto desde fila 3 (datos) hasta el final
-                        for row in range(3, ws_informe.max_row + 1):
-                            ws_informe.cell(row=row, column=col_idx).number_format = '@'
-                        logger.info(f"✅ Formato de texto aplicado a columna 'Código acreditado' (columna {col_idx})")
-                        break
-            
-            # Aplicar formato de texto a 'Concepto Depósito'
-            aplicar_formato_texto_concepto_deposito(ws_informe, df_completo_sin_links)
-            
-            # Aplicar formato condicional a la hoja de informe completo
-            aplicar_formato_condicional(ws_informe, columna_mora, len(df_completo))
-            
-            # Añadir hipervínculos si existe la columna 'Link de Geolocalización'
-            if 'Link de Geolocalización' in df_completo_sin_links.columns:
-                link_col = df_completo_sin_links.columns.get_loc('Link de Geolocalización') + 1  # +1 porque Excel es 1-indexado
-                
-                # Escribir hipervínculos usando fórmula HYPERLINK (persisten mejor con openpyxl)
-                for i, (idx, row) in enumerate(df_completo.iterrows()):
-                    row_num = i + 3  # +3 porque Excel empieza en 1, hay títulos en fila 1, encabezados en fila 2, datos empiezan en fila 3
-                    if 'link_texto' in df_completo.columns and 'link_url' in df_completo.columns:
-                        texto = row['link_texto']
-                        url = row['link_url']
-                        escribir_hipervinculo_excel(ws_informe, row_num, link_col, texto, url)
-            
-            # Aplicar formato final y formatos específicos antes de crear la tabla
-            aplicar_formato_final(ws_informe, df_completo_sin_links, es_hoja_mora=False)
-            aplicar_formato_porcentaje_mora(ws_informe, df_completo_sin_links)
-            aplicar_formato_alerta(ws_informe, df_completo_sin_links)
-            # Crear tabla al final para no afectar hipervínculos ni formato condicional
-            crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe, incluir_columnas_adicionales=False)
+            # Bug 4-A: cuando se usa plantilla, la hoja de fecha ya fue escrita en el bloque openpyxl (iter 4).
+            # Omitir escritura duplicada via ExcelWriter para evitar dos hojas con la misma fecha.
+            if not usar_plantilla:
+                df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, index=False, startrow=1)
+                ws_informe = writer.sheets[hoja_informe]
+
+                if 'Código acreditado' in df_completo_sin_links.columns:
+                    for col_idx in range(1, ws_informe.max_column + 1):
+                        if ws_informe.cell(row=2, column=col_idx).value == 'Código acreditado':
+                            for row in range(3, ws_informe.max_row + 1):
+                                ws_informe.cell(row=row, column=col_idx).number_format = '@'
+                            logger.info(f"✅ Formato de texto aplicado a columna 'Código acreditado' (columna {col_idx})")
+                            break
+
+                aplicar_formato_texto_concepto_deposito(ws_informe, df_completo_sin_links)
+                aplicar_formato_condicional(ws_informe, columna_mora, len(df_completo))
+
+                if 'Link de Geolocalización' in df_completo_sin_links.columns:
+                    link_col = df_completo_sin_links.columns.get_loc('Link de Geolocalización') + 1
+                    for i, (idx, row) in enumerate(df_completo.iterrows()):
+                        row_num = i + 3
+                        if 'link_texto' in df_completo.columns and 'link_url' in df_completo.columns:
+                            escribir_hipervinculo_excel(ws_informe, row_num, link_col, row['link_texto'], row['link_url'])
+
+                aplicar_formato_final(ws_informe, df_completo_sin_links, es_hoja_mora=False)
+                aplicar_formato_porcentaje_mora(ws_informe, df_completo_sin_links)
+                aplicar_formato_alerta(ws_informe, df_completo_sin_links)
+                crear_tabla_excel(ws_informe, df_completo_sin_links, hoja_informe, incluir_columnas_adicionales=False)
+            else:
+                logger.info(f"📋 Hoja '{hoja_informe}' ya escrita en bloque openpyxl (iter 4) — omitiendo escritura duplicada")
 
             # --- Hoja RECUPERADOR_000124 (registros con código recuperador en CODIGOS_RECUPERADOR_EXCLUIR) ---
             if df_recup_000124_sin_links is not None and len(df_recup_000124_sin_links) > 0:

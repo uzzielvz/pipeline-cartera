@@ -149,53 +149,66 @@ def calcular_combinado(mora, dias_ultimo_pago, periodicidad, saldo_riesgo_total_
 **Archivo a modificar**: `app/reportes.py`
 
 **Cambio técnico**:
-- Después de escribir R_Completo, copiar el mismo DataFrame a una nueva hoja
-- El nombre de la hoja se obtiene del campo de fecha del reporte (mismo mecanismo que ya usa `nombre_hoja_informe`)
-- La tabla de la hoja de fecha tendrá un nombre distinto (ej: `T_DDMMYYYY`)
-- Mismas 74 columnas, mismo formato
+- Después de escribir R_Completo en el bloque openpyxl, crear hoja `fecha_actual` con mismos datos
+- Mismas 74 columnas, mismo formato tipo tabla
+
+**Estado**: ✅ Implementada (commit `36a2b92`) — ⚠️ pendiente corrección de bugs (ver abajo)
+
+### Bugs encontrados en iter 4
+
+**Bug 4-A: Hoja de fecha duplicada**
+- **Causa raíz**: El flujo con plantilla escribe la hoja de fecha DOS veces:
+  1. En el bloque `openpyxl` (iter 4) crea `ws_fecha` con nombre `fecha_actual`
+  2. En el bloque `with writer:` (ExcelWriter en modo append), el código preexistente escribe `hoja_informe = fecha_actual` vía `df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, ...)` — línea ~2219
+  - Como ExcelWriter tiene `if_sheet_exists='new'`, genera una segunda hoja con nombre alternativo (ej: `04042026` y `040420261`)
+- **Fix**: Cuando `usar_plantilla = True`, omitir el bloque de escritura de `hoja_informe` via ExcelWriter (ya existe creada correctamente por openpyxl). Mantener la variable `hoja_informe = fecha_actual` para que las fórmulas BUSCARV en `Liquidación anticipada` sigan funcionando.
+
+**Bug 4-B: Hoja de fecha sin formato tipo tabla**
+- **Causa raíz**: La hoja `ws_fecha` se crea con celdas crudas. R_Completo tiene tabla formal porque usa la plantilla (tabla preexistente). `ws_fecha` se crea desde cero y no hereda ninguna tabla.
+- **Fix**: Agregar `openpyxl.worksheet.table.Table` a `ws_fecha` con el mismo estilo (`TableStyleLight1`), rango `A2:BV{ultima_fila}`, nombre `T_{fecha_actual}`.
 
 **Cómo validar**:
-1. Generar reporte con archivo del corte 31/03/2026
-2. Confirmar que el Excel tiene una hoja llamada `31032026`
+1. Generar reporte
+2. Confirmar que hay UNA SOLA hoja con la fecha (ej: `04042026`)
 3. Confirmar que tiene exactamente el mismo número de filas y columnas que R_Completo
-4. Comparar 5 filas al azar entre R_Completo y `31032026` — deben ser idénticas
-
-**Cómo revertir**: eliminar el bloque que escribe la hoja de fecha
+4. Confirmar que tiene formato tipo tabla (franjas alternadas, encabezado con color)
 
 ---
 
 ## Iteración 5 — Generar hoja del siguiente período
 
-**Objetivo**: Python genera una hoja con nombre del siguiente mes (ej: `Abril2026`) que contiene los registros cuyo `Inicio ciclo` cae en el mes siguiente al corte.
+**Objetivo**: Python genera una hoja `Abril2026` con los registros cuyo `Inicio ciclo` cae en abril 2026.
 
 **Archivo a modificar**: `app/reportes.py`
 
-**Cambio técnico**:
-```python
-import calendar
+**Estado**: ✅ Implementada (commit `aa3cced` + fix `08cee9b`) — ⚠️ pendiente corrección de bugs (ver abajo)
 
-# Calcular el mes siguiente
-mes_siguiente = (fecha_corte.month % 12) + 1
-anio_siguiente = fecha_corte.year + (1 if mes_siguiente == 1 else 0)
+### Bugs encontrados en iter 5
 
-# Filtrar registros
-df_siguiente = df[df['Inicio ciclo'].dt.month == mes_siguiente]
+**Bug 5-A: Filtro por mes incorrecto (Mayo en lugar de Abril)**
+- **Causa raíz**: La lógica calcula `mes_siguiente = (fecha_reporte.month % 12) + 1`. Si el archivo subido tiene corte en **abril 2026**, entonces `mes_siguiente = 5` (mayo). El plan original asumía un corte de **marzo 2026**.
+- **Acuerdo con usuario**: Por ahora la hoja es siempre `Abril2026`, filtrando `Inicio ciclo` con `mes == 4 AND año == 2026`.
+- **Fix a corto plazo**: Hardcodear `mes_filtro = 4`, `anio_filtro = 2026`, `nombre_hoja_siguiente = "Abril2026"`.
+- **Fix a largo plazo** (cuando se revise): cambiar la lógica a `mes_filtro = fecha_reporte.month`, `anio_filtro = fecha_reporte.year` — es decir, filtrar el MES DEL CORTE, no el siguiente.
 
-# Nombre de la hoja: nombre del mes en español + año
-MESES_ES = {1:'Enero',2:'Febrero',3:'Marzo',4:'Abril',5:'Mayo',6:'Junio',
-            7:'Julio',8:'Agosto',9:'Septiembre',10:'Octubre',11:'Noviembre',12:'Diciembre'}
-nombre_hoja_siguiente = f"{MESES_ES[mes_siguiente]}{anio_siguiente}"
-
-# Escribir con mismas 74 cols y mismo formato que R_Completo
-```
+**Bug 5-B: Hoja Abril2026 sin formato tipo tabla**
+- **Causa raíz**: Igual que Bug 4-B — `ws_siguiente` se crea con celdas crudas, sin tabla openpyxl.
+- **Fix**: Agregar `Table` a `ws_siguiente` con estilo `TableStyleLight1`, rango `A2:BV{ultima_fila}`, nombre `T_Abril2026`.
 
 **Cómo validar**:
-1. Generar reporte con archivo que tenga al menos un registro con `Inicio ciclo` en el mes siguiente
-2. Confirmar que aparece hoja `Abril2026` (o el mes que corresponda)
-3. Confirmar que solo contiene registros cuyo Inicio ciclo es en ese mes
-4. Si no hay registros del mes siguiente, la hoja debe crearse vacía (solo headers) o no crearse — **definir comportamiento**
+1. Generar reporte
+2. Confirmar que aparece hoja `Abril2026`
+3. Confirmar que todos sus registros tienen `Inicio ciclo` en abril 2026 (no mayo, no otros meses)
+4. Confirmar formato tipo tabla (franjas, encabezado)
 
-**Cómo revertir**: eliminar el bloque que escribe la hoja del siguiente período
+### Corrección conjunta de iter 4 y 5 (un solo commit)
+
+Los tres bugs (4-A, 4-B, 5-A, 5-B) se corrigen en una sola iteración:
+1. Omitir escritura de `hoja_informe` via ExcelWriter cuando `usar_plantilla = True`
+2. Hardcodear filtro: `mes=4`, `año=2026`, `nombre="Abril2026"`
+3. Agregar `Table` a `ws_fecha` y `ws_siguiente` con openpyxl
+
+**Cómo revertir**: restaurar la escritura de `hoja_informe` vía ExcelWriter y el cálculo dinámico de `mes_siguiente`
 
 ---
 
