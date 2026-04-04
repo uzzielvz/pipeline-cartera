@@ -1527,6 +1527,40 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
 
             logger.info(f"✅ Hoja '{nombre_hoja_fecha}' creada con {len(df_r_completo)} registros")
 
+            # --- ITERACIÓN 5: Crear hoja del siguiente período (ej: Abril2026) ---
+            MESES_ES = {1:'Enero',2:'Febrero',3:'Marzo',4:'Abril',5:'Mayo',6:'Junio',
+                        7:'Julio',8:'Agosto',9:'Septiembre',10:'Octubre',11:'Noviembre',12:'Diciembre'}
+            mes_siguiente = (fecha_reporte.month % 12) + 1
+            anio_siguiente = fecha_reporte.year + (1 if mes_siguiente == 1 else 0)
+            nombre_hoja_siguiente = f"{MESES_ES[mes_siguiente]}{anio_siguiente}"
+            logger.info(f"📋 Creando hoja del siguiente período '{nombre_hoja_siguiente}'...")
+
+            col_inicio_ciclo = 'Inicio ciclo'
+            if col_inicio_ciclo in df_r_completo.columns:
+                serie_ciclo = pd.to_datetime(df_r_completo[col_inicio_ciclo], errors='coerce')
+                df_siguiente = df_r_completo[serie_ciclo.dt.month == mes_siguiente].copy()
+            else:
+                logger.warning(f"⚠️ Columna '{col_inicio_ciclo}' no encontrada — hoja '{nombre_hoja_siguiente}' se crea vacía")
+                df_siguiente = df_r_completo.iloc[0:0].copy()
+
+            if nombre_hoja_siguiente in wb_plantilla.sheetnames:
+                del wb_plantilla[nombre_hoja_siguiente]
+            ws_siguiente = wb_plantilla.create_sheet(title=nombre_hoja_siguiente)
+
+            # Encabezados en fila 2
+            for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                cell = ws_siguiente.cell(row=2, column=col_idx, value=col_name)
+                cell.font = Font(bold=True)
+            ws_siguiente.row_dimensions[2].height = EXCEL_CONFIG['header_height']
+
+            # Datos desde fila 3
+            for row_idx, (_, row) in enumerate(df_siguiente.iterrows(), start=3):
+                for col_idx, value in enumerate(row, start=1):
+                    cell = ws_siguiente.cell(row=row_idx, column=col_idx)
+                    cell.value = None if pd.isna(value) else value
+
+            logger.info(f"✅ Hoja '{nombre_hoja_siguiente}' creada con {len(df_siguiente)} registros (Inicio ciclo = {MESES_ES[mes_siguiente]})")
+
             # Guardar cambios
             wb_plantilla.save(ruta_salida)
             wb_plantilla.close()
