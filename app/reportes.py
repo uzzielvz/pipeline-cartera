@@ -1499,7 +1499,11 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 nuevo_rango = f"A2:{ultima_col_letra}{ultima_fila}"
                 if hasattr(ws_r_completo, 'tables') and ws_r_completo.tables:
                     for t_name in list(ws_r_completo.tables.keys()):
-                        ws_r_completo.tables[t_name].ref = nuevo_rango
+                        tabla_r = ws_r_completo.tables[t_name]
+                        tabla_r.ref = nuevo_rango
+                        # Forzar autoFilter para que Excel muestre los triángulos de filtro
+                        from openpyxl.worksheet.filters import AutoFilter
+                        tabla_r.autoFilter = AutoFilter(ref=nuevo_rango)
                         logger.info(f"✅ Rango de tabla '{t_name}' en R_Completo actualizado a {nuevo_rango}")
                 
                 logger.info(f"✅ R_Completo llenado con {len(df_r_completo)} registros")
@@ -1536,7 +1540,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             )
             tabla_fecha.tableStyleInfo = TableStyleInfo(
                 name=EXCEL_CONFIG['table_style'], showFirstColumn=False,
-                showLastColumn=False, showRowStripes=True, showColumnStripes=False
+                showLastColumn=False, showRowStripes=False, showColumnStripes=False
             )
             ws_fecha.add_table(tabla_fecha)
             logger.info(f"✅ Hoja '{nombre_hoja_fecha}' creada con {len(df_r_completo)} registros y tabla formal")
@@ -1584,7 +1588,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             )
             tabla_siguiente.tableStyleInfo = TableStyleInfo(
                 name=EXCEL_CONFIG['table_style'], showFirstColumn=False,
-                showLastColumn=False, showRowStripes=True, showColumnStripes=False
+                showLastColumn=False, showRowStripes=False, showColumnStripes=False
             )
             ws_siguiente.add_table(tabla_siguiente)
             logger.info(f"✅ Hoja '{nombre_hoja_siguiente}' creada con {len(df_siguiente)} registros y tabla formal")
