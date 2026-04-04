@@ -1454,17 +1454,19 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             if 'R_Completo' in wb_plantilla.sheetnames:
                 ws_r_completo = wb_plantilla['R_Completo']
                 
-                # Escribir encabezados en fila 2 (incluye "Días desde el último pago" y "Alerta")
-                for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
-                    cell = ws_r_completo.cell(row=2, column=col_idx, value=col_name)
-                    cell.font = Font(bold=True)
-                ws_r_completo.row_dimensions[2].height = EXCEL_CONFIG['header_height']
-                # Relleno azul en encabezado "Días de mora"
-                for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
-                    if col_name == COLUMN_MAPPING.get('mora', 'Días de mora'):
-                        ws_r_completo.cell(row=2, column=col_idx).fill = PatternFill(
-                            start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
+                # Preservar headers existentes de la plantilla (row 2) para no romper el autoFilter de la tabla.
+                # Solo escribir headers para columnas NUEVAS que no existen en la plantilla (cols > plantilla original).
+                col_existentes = 0
+                for c in range(1, len(df_r_completo.columns) + 1):
+                    if ws_r_completo.cell(row=2, column=c).value is not None:
+                        col_existentes = c
+                    else:
                         break
+
+                for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                    if col_idx > col_existentes:
+                        cell = ws_r_completo.cell(row=2, column=col_idx, value=col_name)
+                        cell.font = Font(bold=True)
                 
                 # Escribir datos desde fila 3
                 logger.info(f"📝 Escribiendo {len(df_r_completo)} filas en R_Completo...")
