@@ -1499,11 +1499,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 nuevo_rango = f"A2:{ultima_col_letra}{ultima_fila}"
                 if hasattr(ws_r_completo, 'tables') and ws_r_completo.tables:
                     for t_name in list(ws_r_completo.tables.keys()):
-                        tabla_r = ws_r_completo.tables[t_name]
-                        tabla_r.ref = nuevo_rango
-                        # Forzar autoFilter para que Excel muestre los triángulos de filtro
-                        from openpyxl.worksheet.filters import AutoFilter
-                        tabla_r.autoFilter = AutoFilter(ref=nuevo_rango)
+                        ws_r_completo.tables[t_name].ref = nuevo_rango
                         logger.info(f"✅ Rango de tabla '{t_name}' en R_Completo actualizado a {nuevo_rango}")
                 
                 logger.info(f"✅ R_Completo llenado con {len(df_r_completo)} registros")
@@ -1523,11 +1519,24 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 cell.font = Font(bold=True)
             ws_fecha.row_dimensions[2].height = EXCEL_CONFIG['header_height']
 
+            # Relleno azul en encabezado "Días de mora"
+            col_mora_nombre = COLUMN_MAPPING.get('mora', 'Días de mora')
+            for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                if col_name == col_mora_nombre:
+                    ws_fecha.cell(row=2, column=col_idx).fill = PatternFill(
+                        start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
+                    break
+
             # Datos desde fila 3
             for row_idx, (_, row) in enumerate(df_r_completo.iterrows(), start=3):
                 for col_idx, value in enumerate(row, start=1):
                     cell = ws_fecha.cell(row=row_idx, column=col_idx)
                     cell.value = None if pd.isna(value) else value
+
+            # Mismo formato que R_Completo
+            aplicar_formato_condicional(ws_fecha, col_mora_nombre, len(df_r_completo))
+            aplicar_formato_porcentaje_mora(ws_fecha, df_r_completo)
+            aplicar_formato_alerta(ws_fecha, df_r_completo)
 
             # Bug 4-B: agregar tabla formal a ws_fecha
             num_filas_fecha = len(df_r_completo)
@@ -1572,11 +1581,23 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 cell.font = Font(bold=True)
             ws_siguiente.row_dimensions[2].height = EXCEL_CONFIG['header_height']
 
+            # Relleno azul en encabezado "Días de mora"
+            for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                if col_name == col_mora_nombre:
+                    ws_siguiente.cell(row=2, column=col_idx).fill = PatternFill(
+                        start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
+                    break
+
             # Datos desde fila 3
             for row_idx, (_, row) in enumerate(df_siguiente.iterrows(), start=3):
                 for col_idx, value in enumerate(row, start=1):
                     cell = ws_siguiente.cell(row=row_idx, column=col_idx)
                     cell.value = None if pd.isna(value) else value
+
+            # Mismo formato que R_Completo
+            aplicar_formato_condicional(ws_siguiente, col_mora_nombre, len(df_siguiente))
+            aplicar_formato_porcentaje_mora(ws_siguiente, df_siguiente)
+            aplicar_formato_alerta(ws_siguiente, df_siguiente)
 
             # Bug 5-B: agregar tabla formal a ws_siguiente
             num_filas_sig = len(df_siguiente)
