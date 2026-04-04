@@ -1454,19 +1454,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             if 'R_Completo' in wb_plantilla.sheetnames:
                 ws_r_completo = wb_plantilla['R_Completo']
                 
-                # Preservar headers existentes de la plantilla (row 2) para no romper el autoFilter de la tabla.
-                # Solo escribir headers para columnas NUEVAS que no existen en la plantilla (cols > plantilla original).
-                col_existentes = 0
-                for c in range(1, len(df_r_completo.columns) + 1):
-                    if ws_r_completo.cell(row=2, column=c).value is not None:
-                        col_existentes = c
-                    else:
-                        break
-
-                for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
-                    if col_idx > col_existentes:
-                        cell = ws_r_completo.cell(row=2, column=col_idx, value=col_name)
-                        cell.font = Font(bold=True)
+                # Row 2 (headers) viene completa desde la plantilla — no se toca para preservar el autoFilter de la tabla.
                 
                 # Escribir datos desde fila 3
                 logger.info(f"📝 Escribiendo {len(df_r_completo)} filas en R_Completo...")
