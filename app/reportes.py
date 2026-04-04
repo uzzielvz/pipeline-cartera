@@ -479,7 +479,7 @@ def agregar_columnas_nuevas(df):
 
     saldo_riesgo_nuevo = saldo_t.where(mora > 30, other=0)
 
-    combinado = cuotas.apply(round).where(mora <= 30, other=saldo_riesgo_nuevo)
+    combinado = cuotas.round(0).where(mora <= 30, other=saldo_riesgo_nuevo)
 
     df['Cuotas sin pagar']   = cuotas
     df['Saldo_Riesgo_total'] = saldo_riesgo_nuevo
