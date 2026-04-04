@@ -1594,10 +1594,11 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                     cell = ws_siguiente.cell(row=row_idx, column=col_idx)
                     cell.value = None if pd.isna(value) else value
 
-            # Mismo formato que R_Completo
-            aplicar_formato_condicional(ws_siguiente, col_mora_nombre, len(df_siguiente))
-            aplicar_formato_porcentaje_mora(ws_siguiente, df_siguiente)
-            aplicar_formato_alerta(ws_siguiente, df_siguiente)
+            # Mismo formato que R_Completo (solo si hay datos — rango vacío causa error en formato condicional)
+            if len(df_siguiente) > 0:
+                aplicar_formato_condicional(ws_siguiente, col_mora_nombre, len(df_siguiente))
+                aplicar_formato_porcentaje_mora(ws_siguiente, df_siguiente)
+                aplicar_formato_alerta(ws_siguiente, df_siguiente)
 
             # Bug 5-B: agregar tabla formal a ws_siguiente
             num_filas_sig = len(df_siguiente)
