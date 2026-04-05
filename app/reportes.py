@@ -446,6 +446,29 @@ def agregar_columnas_dias_ultimo_pago_y_alerta(df):
     logger.info("✅ Columnas 'Días desde el último pago' y 'Alerta' agregadas")
     return df
 
+def aplicar_formatos_moneda_fecha_openpyxl(ws, df, num_filas):
+    """
+    Aplica formato de moneda y fecha corta a una hoja openpyxl creada desde cero.
+    Usa índice directo de columna del df (no busca por header en row 2).
+    """
+    _NO_MONEDA = {'días desde el último pago', 'dias desde el ultimo pago', 'pagos vencidos'}
+    fila_inicio = 3
+    fila_fin = fila_inicio + num_filas  # exclusivo
+
+    for col_idx, col_name in enumerate(df.columns, start=1):
+        col_lower = col_name.lower().strip()
+
+        # Formato moneda
+        if any(k in col_lower for k in CURRENCY_COLUMNS_KEYWORDS) and col_lower not in _NO_MONEDA:
+            for row in range(fila_inicio, fila_fin):
+                ws.cell(row=row, column=col_idx).number_format = EXCEL_CONFIG['currency_format']
+
+        # Formato fecha corta (solo columnas datetime en el df)
+        elif df[col_name].dtype in ('datetime64[ns]', 'datetime64[ns, UTC]') or str(df[col_name].dtype).startswith('datetime'):
+            for row in range(fila_inicio, fila_fin):
+                ws.cell(row=row, column=col_idx).number_format = EXCEL_CONFIG['date_format']
+
+
 def agregar_columnas_nuevas(df):
     """
     Agrega las 3 columnas nuevas al final del DataFrame (iteración 3):
@@ -1524,7 +1547,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                     cell.value = None if pd.isna(value) else value
 
             # Mismo formato que R_Completo
-            aplicar_formato_final(ws_fecha, df_r_completo, es_hoja_mora=False)
+            aplicar_formatos_moneda_fecha_openpyxl(ws_fecha, df_r_completo, len(df_r_completo))
             aplicar_formato_condicional(ws_fecha, col_mora_nombre, len(df_r_completo))
             aplicar_formato_porcentaje_mora(ws_fecha, df_r_completo)
             aplicar_formato_alerta(ws_fecha, df_r_completo)
@@ -1587,7 +1610,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
 
             # Mismo formato que R_Completo (solo si hay datos — rango vacío causa error en formato condicional)
             if len(df_siguiente) > 0:
-                aplicar_formato_final(ws_siguiente, df_siguiente, es_hoja_mora=False)
+                aplicar_formatos_moneda_fecha_openpyxl(ws_siguiente, df_siguiente, len(df_siguiente))
                 aplicar_formato_condicional(ws_siguiente, col_mora_nombre, len(df_siguiente))
                 aplicar_formato_porcentaje_mora(ws_siguiente, df_siguiente)
                 aplicar_formato_alerta(ws_siguiente, df_siguiente)
