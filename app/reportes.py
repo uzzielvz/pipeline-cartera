@@ -1540,11 +1540,23 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                         start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
                     break
 
-            # Datos desde fila 3
+            # Pre-calcular columnas de moneda y fecha para aplicar formato en el mismo loop
+            _NO_MONEDA = {'días desde el último pago', 'dias desde el ultimo pago', 'pagos vencidos'}
+            _cols_moneda_fecha = {}  # col_idx -> format_string
+            for _ci, _cn in enumerate(df_r_completo.columns, start=1):
+                _cl = _cn.lower().strip()
+                if any(k in _cl for k in CURRENCY_COLUMNS_KEYWORDS) and _cl not in _NO_MONEDA:
+                    _cols_moneda_fecha[_ci] = EXCEL_CONFIG['currency_format']
+                elif str(df_r_completo[_cn].dtype).startswith('datetime'):
+                    _cols_moneda_fecha[_ci] = EXCEL_CONFIG['date_format']
+
+            # Datos desde fila 3 — formato aplicado celda por celda en el mismo loop
             for row_idx, (_, row) in enumerate(df_r_completo.iterrows(), start=3):
                 for col_idx, value in enumerate(row, start=1):
                     cell = ws_fecha.cell(row=row_idx, column=col_idx)
                     cell.value = None if pd.isna(value) else value
+                    if col_idx in _cols_moneda_fecha:
+                        cell.number_format = _cols_moneda_fecha[col_idx]
 
             # Mismo formato que R_Completo
             aplicar_formatos_moneda_fecha_openpyxl(ws_fecha, df_r_completo, len(df_r_completo))
@@ -1602,11 +1614,22 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                         start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
                     break
 
-            # Datos desde fila 3
+            # Pre-calcular formatos para df_siguiente (mismas columnas que df_r_completo)
+            _cols_moneda_fecha_sig = {}
+            for _ci, _cn in enumerate(df_r_completo.columns, start=1):
+                _cl = _cn.lower().strip()
+                if any(k in _cl for k in CURRENCY_COLUMNS_KEYWORDS) and _cl not in _NO_MONEDA:
+                    _cols_moneda_fecha_sig[_ci] = EXCEL_CONFIG['currency_format']
+                elif str(df_r_completo[_cn].dtype).startswith('datetime'):
+                    _cols_moneda_fecha_sig[_ci] = EXCEL_CONFIG['date_format']
+
+            # Datos desde fila 3 — formato aplicado celda por celda en el mismo loop
             for row_idx, (_, row) in enumerate(df_siguiente.iterrows(), start=3):
                 for col_idx, value in enumerate(row, start=1):
                     cell = ws_siguiente.cell(row=row_idx, column=col_idx)
                     cell.value = None if pd.isna(value) else value
+                    if col_idx in _cols_moneda_fecha_sig:
+                        cell.number_format = _cols_moneda_fecha_sig[col_idx]
 
             # Mismo formato que R_Completo (solo si hay datos — rango vacío causa error en formato condicional)
             if len(df_siguiente) > 0:
