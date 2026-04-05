@@ -2338,6 +2338,16 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             # Agregar columnas 'Saldo riesgo capital', 'Saldo riesgo total' y '% MORA'
             df_mora_sin_links = agregar_columnas_riesgo_y_mora(df_mora_sin_links.copy())
             
+            # --- ITERACIÓN 6: Reordenar columnas de Mora ---
+            COLS_PRIMERAS_MORA = [
+                'Nom. región', 'Coordinación', 'Código promotor', 'Nombre promotor',
+                'Código recuperador', 'Nombre recuperador', 'Código acreditado'
+            ]
+            cols_presentes = [c for c in COLS_PRIMERAS_MORA if c in df_mora_sin_links.columns]
+            cols_resto = [c for c in df_mora_sin_links.columns if c not in COLS_PRIMERAS_MORA]
+            df_mora_sin_links = df_mora_sin_links[cols_presentes + cols_resto]
+            logger.info(f"✅ Mora reordenada — primera col: '{df_mora_sin_links.columns[0]}'")
+
             df_mora_sin_links.to_excel(writer, sheet_name='Mora', index=False, startrow=1)
             
             # Aplicar formato condicional
