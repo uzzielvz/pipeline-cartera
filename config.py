@@ -113,7 +113,7 @@ MORA_BLUE_COLUMNS = [
 ]
 
 # Configuración de columnas de moneda
-CURRENCY_COLUMNS_KEYWORDS = ['monto', 'saldo', 'importe', 'cantidad', 'pago']
+CURRENCY_COLUMNS_KEYWORDS = ['monto', 'saldo', 'importe', 'cantidad', 'pago', 'parcialidad']
 
 # Configuración de columnas de fecha
 DATE_COLUMNS_KEYWORDS = ['fecha', 'date']

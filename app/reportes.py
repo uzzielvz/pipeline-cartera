@@ -1011,7 +1011,7 @@ def aplicar_formato_final(worksheet, df, es_hoja_mora=False):
 
     # d) Formato de moneda en columnas conocidas del df
     # Excluir columnas de días (que pueden contener "pago" en su nombre pero son numéricas enteras)
-    COLUMNAS_NO_MONEDA = {'días desde el último pago', 'dias desde el ultimo pago'}
+    COLUMNAS_NO_MONEDA = {'días desde el último pago', 'dias desde el ultimo pago', 'pagos vencidos'}
     columnas_moneda = [
         col for col in df.columns
         if any(key in col.lower() for key in CURRENCY_COLUMNS_KEYWORDS)
@@ -1524,6 +1524,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                     cell.value = None if pd.isna(value) else value
 
             # Mismo formato que R_Completo
+            aplicar_formato_final(ws_fecha, df_r_completo, es_hoja_mora=False)
             aplicar_formato_condicional(ws_fecha, col_mora_nombre, len(df_r_completo))
             aplicar_formato_porcentaje_mora(ws_fecha, df_r_completo)
             aplicar_formato_alerta(ws_fecha, df_r_completo)
@@ -1586,6 +1587,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
 
             # Mismo formato que R_Completo (solo si hay datos — rango vacío causa error en formato condicional)
             if len(df_siguiente) > 0:
+                aplicar_formato_final(ws_siguiente, df_siguiente, es_hoja_mora=False)
                 aplicar_formato_condicional(ws_siguiente, col_mora_nombre, len(df_siguiente))
                 aplicar_formato_porcentaje_mora(ws_siguiente, df_siguiente)
                 aplicar_formato_alerta(ws_siguiente, df_siguiente)
