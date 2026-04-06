@@ -18,3 +18,7 @@ uploads/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Database files
+*.db
+instance/
