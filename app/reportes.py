@@ -1477,6 +1477,16 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             df_r_completo = df_r_completo.iloc[:, :74]
             logger.info(f"✅ df_r_completo recortado a {len(df_r_completo.columns)} columnas: {list(df_r_completo.columns[-3:])}")
 
+            # Iter 11: agregar columna 'Suma' (col 75) — 1 si Días de mora está entre 1 y 30, else 0
+            _col_mora = COLUMN_MAPPING.get('mora', 'Días de mora')
+            if _col_mora in df_r_completo.columns:
+                df_r_completo['Suma'] = df_r_completo[_col_mora].apply(
+                    lambda x: 1 if (pd.notna(x) and 0 < x <= 30) else 0
+                )
+            else:
+                df_r_completo['Suma'] = 0
+            logger.info("✅ Columna 'Suma' (col 75) agregada")
+
             # Llenar hoja R_Completo con los datos
             if 'R_Completo' in wb_plantilla.sheetnames:
                 ws_r_completo = wb_plantilla['R_Completo']
