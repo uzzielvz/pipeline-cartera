@@ -1473,6 +1473,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             df_r_completo = agregar_columnas_dias_ultimo_pago_y_alerta(df_r_completo)
             df_r_completo = agregar_columnas_nuevas(df_r_completo)
 
+            # Iter 10: descartar columnas extra del archivo fuente (Fraude, vacías, etc.)
+            df_r_completo = df_r_completo.iloc[:, :74]
+            logger.info(f"✅ df_r_completo recortado a {len(df_r_completo.columns)} columnas: {list(df_r_completo.columns[-3:])}")
+
             # Llenar hoja R_Completo con los datos
             if 'R_Completo' in wb_plantilla.sheetnames:
                 ws_r_completo = wb_plantilla['R_Completo']
