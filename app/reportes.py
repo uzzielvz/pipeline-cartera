@@ -1503,7 +1503,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 # Aplicar formatos de porcentaje (% MORA) y Alerta (relleno rojo)
                 aplicar_formato_porcentaje_mora(ws_r_completo, df_r_completo)
                 aplicar_formato_alerta(ws_r_completo, df_r_completo)
-                
+
+                # Aplicar formato de moneda y fecha corta a R_Completo
+                aplicar_formato_final(ws_r_completo, df_r_completo, es_hoja_mora=False)
+
                 # Actualizar rango de la tabla existente para abarcar todos los datos escritos
                 num_filas_escritas = len(df_r_completo)
                 num_cols = len(df_r_completo.columns)
@@ -1563,6 +1566,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             aplicar_formato_condicional(ws_fecha, col_mora_nombre, len(df_r_completo))
             aplicar_formato_porcentaje_mora(ws_fecha, df_r_completo)
             aplicar_formato_alerta(ws_fecha, df_r_completo)
+            aplicar_formato_final(ws_fecha, df_r_completo, es_hoja_mora=False)
 
             # Bug 4-B: agregar tabla formal a ws_fecha
             num_filas_fecha = len(df_r_completo)
@@ -1637,6 +1641,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 aplicar_formato_condicional(ws_siguiente, col_mora_nombre, len(df_siguiente))
                 aplicar_formato_porcentaje_mora(ws_siguiente, df_siguiente)
                 aplicar_formato_alerta(ws_siguiente, df_siguiente)
+            aplicar_formato_final(ws_siguiente, df_r_completo, es_hoja_mora=False)
 
             # Bug 5-B: agregar tabla formal a ws_siguiente
             num_filas_sig = len(df_siguiente)
