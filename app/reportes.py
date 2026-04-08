@@ -1732,6 +1732,25 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             ws_historico.add_table(tabla_historico)
             logger.info(f"✅ Hoja '{nombre_hoja_historico}' creada con {len(df_historico)} registros (acumulado hasta {corte_historico.date()})")
 
+            # --- ITERACIÓN 14: Reordenar pestañas ---
+            ORDEN_HOJAS = [
+                'R_Completo',
+                fecha_actual,           # DDMMYYYY
+                nombre_hoja_historico,  # Marzo2026
+                nombre_hoja_siguiente,  # Abril2026
+                'X_Coordinación',
+                'X_Recuperador',
+                'RECUPERADOR_000124',
+                'Mora',
+                'Cuentas con saldo vencido',
+                'Liquidación anticipada',
+            ]
+            for i, nombre in enumerate(ORDEN_HOJAS):
+                if nombre in wb_plantilla.sheetnames:
+                    idx_actual = wb_plantilla.sheetnames.index(nombre)
+                    wb_plantilla.move_sheet(nombre, offset=i - idx_actual)
+            logger.info(f"✅ Orden de pestañas aplicado: {[s for s in ORDEN_HOJAS if s in wb_plantilla.sheetnames]}")
+
             # Guardar cambios
             wb_plantilla.save(ruta_salida)
             wb_plantilla.close()
