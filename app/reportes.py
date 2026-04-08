@@ -1672,6 +1672,66 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             ws_siguiente.add_table(tabla_siguiente)
             logger.info(f"✅ Hoja '{nombre_hoja_siguiente}' creada con {len(df_siguiente)} registros y tabla formal")
 
+            # --- ITERACIÓN 13: Crear hoja histórica acumulada 'Marzo2026' ---
+            # Contiene TODOS los registros con Inicio ciclo < 01/04/2026 (acumulado, no solo marzo)
+            nombre_hoja_historico = "Marzo2026"
+            corte_historico = pd.Timestamp(2026, 4, 1)
+            logger.info(f"📋 Creando hoja histórica '{nombre_hoja_historico}' (Inicio ciclo < {corte_historico.date()})...")
+
+            if col_inicio_ciclo in df_r_completo.columns:
+                serie_ciclo_hist = pd.to_datetime(df_r_completo[col_inicio_ciclo], errors='coerce')
+                df_historico = df_r_completo[serie_ciclo_hist < corte_historico].copy()
+            else:
+                logger.warning(f"⚠️ Columna '{col_inicio_ciclo}' no encontrada — hoja '{nombre_hoja_historico}' se crea vacía")
+                df_historico = df_r_completo.iloc[0:0].copy()
+
+            if nombre_hoja_historico in wb_plantilla.sheetnames:
+                del wb_plantilla[nombre_hoja_historico]
+            ws_historico = wb_plantilla.create_sheet(title=nombre_hoja_historico)
+
+            # Encabezados en fila 2
+            for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                cell = ws_historico.cell(row=2, column=col_idx, value=col_name)
+                cell.font = Font(bold=True)
+            ws_historico.row_dimensions[2].height = EXCEL_CONFIG['header_height']
+
+            # Relleno azul en encabezado "Días de mora"
+            for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                if col_name == col_mora_nombre:
+                    ws_historico.cell(row=2, column=col_idx).fill = PatternFill(
+                        start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
+                    break
+
+            # Datos desde fila 3
+            for row_idx, (_, row) in enumerate(df_historico.iterrows(), start=3):
+                for col_idx, value in enumerate(row, start=1):
+                    cell = ws_historico.cell(row=row_idx, column=col_idx)
+                    cell.value = None if pd.isna(value) else value
+                    if col_idx in _cols_moneda_fecha_sig:
+                        cell.number_format = _cols_moneda_fecha_sig[col_idx]
+
+            # Formatos
+            if len(df_historico) > 0:
+                aplicar_formatos_moneda_fecha_openpyxl(ws_historico, df_historico, len(df_historico))
+                aplicar_formato_condicional(ws_historico, col_mora_nombre, len(df_historico))
+                aplicar_formato_porcentaje_mora(ws_historico, df_historico)
+                aplicar_formato_alerta(ws_historico, df_historico)
+            aplicar_formato_final(ws_historico, df_r_completo, es_hoja_mora=False)
+
+            # Tabla formal
+            ultima_col_hist = get_column_letter(len(df_r_completo.columns))
+            ultima_fila_hist = max(len(df_historico) + 2, 3)
+            tabla_historico = Table(
+                displayName="T_Marzo2026",
+                ref=f"A2:{ultima_col_hist}{ultima_fila_hist}"
+            )
+            tabla_historico.tableStyleInfo = TableStyleInfo(
+                name=EXCEL_CONFIG['table_style'], showFirstColumn=False,
+                showLastColumn=False, showRowStripes=False, showColumnStripes=False
+            )
+            ws_historico.add_table(tabla_historico)
+            logger.info(f"✅ Hoja '{nombre_hoja_historico}' creada con {len(df_historico)} registros (acumulado hasta {corte_historico.date()})")
+
             # Guardar cambios
             wb_plantilla.save(ruta_salida)
             wb_plantilla.close()
