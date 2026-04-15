@@ -1452,7 +1452,9 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         
         # Buscar plantilla con tablas dinámicas
         directorio_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        plantilla_path = os.path.join(directorio_raiz, "PLANTIILA2.xlsx")
+        plantilla_path = os.path.join(directorio_raiz, "PLANTIILA2_nueva.xlsx")
+        if not os.path.exists(plantilla_path):
+            plantilla_path = os.path.join(directorio_raiz, "PLANTIILA2.xlsx")
         usar_plantilla = os.path.exists(plantilla_path)
         
         if usar_plantilla:
