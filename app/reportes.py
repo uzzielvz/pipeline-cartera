@@ -1598,18 +1598,16 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             ws_fecha.add_table(tabla_fecha)
             logger.info(f"✅ Hoja '{nombre_hoja_fecha}' creada con {len(df_r_completo)} registros y tabla formal")
 
-            # --- ITERACIÓN 5: Crear hoja Abril2026 (hardcoded por ahora) ---
-            # Bug 5-A: el corte es abril 2026, mes_siguiente daría mayo — hardcodear abril 2026
-            mes_filtro = 4
-            anio_filtro = 2026
+            # --- ITERACIÓN 5: Crear hoja Abril2026 — todos los registros con Inicio ciclo >= 2026-04-01 ---
             nombre_hoja_siguiente = "Abril2026"
-            logger.info(f"📋 Creando hoja '{nombre_hoja_siguiente}' (Inicio ciclo = abril 2026)...")
+            corte_abril = pd.Timestamp(2026, 4, 1)
+            logger.info(f"📋 Creando hoja '{nombre_hoja_siguiente}' (Inicio ciclo >= {corte_abril.date()})...")
 
             col_inicio_ciclo = 'Inicio ciclo'
             if col_inicio_ciclo in df_r_completo.columns:
                 serie_ciclo = pd.to_datetime(df_r_completo[col_inicio_ciclo], errors='coerce')
                 df_siguiente = df_r_completo[
-                    (serie_ciclo.dt.month == mes_filtro) & (serie_ciclo.dt.year == anio_filtro)
+                    serie_ciclo >= corte_abril
                 ].copy()
             else:
                 logger.warning(f"⚠️ Columna '{col_inicio_ciclo}' no encontrada — hoja '{nombre_hoja_siguiente}' se crea vacía")
