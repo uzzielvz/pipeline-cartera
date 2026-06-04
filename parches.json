@@ -1,0 +1,32 @@
+{
+  "_descripcion": "Parches manuales aplicados al reporte de antiguedad. Cada parche sobrescribe el valor de 'campo' por 'nuevo_valor' para los registros que coincidan por 'codigo' (Codigo acreditado) + 'ciclo' (Ciclo). El campo 'nombre' es solo de referencia humana, no se usa para hacer match. Agrega mas registros dentro de 'registros', o agrega nuevos objetos a la lista 'parches'.",
+  "parches": [
+    {
+      "id": "oficina_central",
+      "descripcion": "Reasignar coordinacion a Oficina Central",
+      "activo": true,
+      "campo": "Coordinación",
+      "nuevo_valor": "Oficina Central",
+      "registros": [
+        { "codigo": "001069", "ciclo": "01", "nombre": "GARCIA VACA MARTHA" },
+        { "codigo": "003040", "ciclo": "04", "nombre": "LEONARDO CASTAÑON MAXIMILIANO" },
+        { "codigo": "005688", "ciclo": "01", "nombre": "RAMIREZ FURIATI EVELIN" },
+        { "codigo": "001423", "ciclo": "01", "nombre": "AGUADO MARTINEZ RENE JOAQUIN" },
+        { "codigo": "001371", "ciclo": "01", "nombre": "GONZALEZ GARCIA CESAR" },
+        { "codigo": "003639", "ciclo": "03", "nombre": "CORTEZ ESQUILA MARTA" },
+        { "codigo": "006490", "ciclo": "01", "nombre": "DAVILA BECERRIL NAZARIO" },
+        { "codigo": "001249", "ciclo": "02", "nombre": "GARCIA FLORES SEBASTIAN ADOLFO" },
+        { "codigo": "001124", "ciclo": "04", "nombre": "MONROY NEGRETE SANDRA" },
+        { "codigo": "005563", "ciclo": "01", "nombre": "MEJIA ALCANTARA JUAN CARLOS" },
+        { "codigo": "001145", "ciclo": "02", "nombre": "NAVOR SEGURA CESAR" },
+        { "codigo": "001083", "ciclo": "04", "nombre": "DAVILA MONROY ROLANDO" },
+        { "codigo": "003824", "ciclo": "03", "nombre": "RODRIGUEZ DU POND JORGE ANTONIO" },
+        { "codigo": "006323", "ciclo": "01", "nombre": "ENRIQUEZ VILCHIS MARIA ALEJANDRA" },
+        { "codigo": "004738", "ciclo": "02", "nombre": "RABLING CONDE NORMAN ENRIQUE" },
+        { "codigo": "005194", "ciclo": "01", "nombre": "MEJIA COLIN SANDRA" },
+        { "codigo": "002648", "ciclo": "02", "nombre": "VAZQUEZ MEDINA HECTOR MANUEL" },
+        { "codigo": "002369", "ciclo": "02", "nombre": "JIMENEZ GARCIA ANGELICA MARIBEL" }
+      ]
+    }
+  ]
+}

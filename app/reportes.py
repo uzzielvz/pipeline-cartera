@@ -10,6 +10,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.styles import numbers
 import os
 import re
+import json
 import logging
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
@@ -69,6 +70,65 @@ def validate_file_size(file_path):
 def clean_dataframe_columns(df):
     """Limpia los nombres de columnas del DataFrame"""
     df.columns = df.columns.str.replace('\n', ' ').str.strip()
+    return df
+
+def cargar_parches(ruta_parches=None):
+    """Carga la lista de parches definidos en parches.json (raíz del proyecto)."""
+    if ruta_parches is None:
+        ruta_parches = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'parches.json'
+        )
+    if not os.path.exists(ruta_parches):
+        return []
+    try:
+        with open(ruta_parches, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data.get('parches', [])
+    except Exception as e:
+        logger.warning(f"⚠️ No se pudieron cargar los parches desde {ruta_parches}: {e}")
+        return []
+
+def aplicar_parches(df):
+    """Aplica los parches de parches.json sobre el DataFrame.
+
+    Cada parche sobrescribe 'campo' con 'nuevo_valor' para los registros que
+    coincidan por 'codigo' (Código acreditado, 6 dígitos) + 'ciclo' (Ciclo, 2 dígitos).
+    El campo 'nombre' de cada registro es solo de referencia y no se usa para el match.
+    """
+    parches = cargar_parches()
+    if not parches:
+        return df
+    if 'Código acreditado' not in df.columns or 'Ciclo' not in df.columns:
+        logger.warning("⚠️ No se aplicaron parches: faltan columnas 'Código acreditado' o 'Ciclo'")
+        return df
+
+    codigo_norm = df['Código acreditado'].astype(str).str.strip().str.zfill(6)
+    ciclo_norm = pd.to_numeric(df['Ciclo'], errors='coerce').fillna(0).astype(int).astype(str).str.zfill(2)
+    claves_df = pd.Series(list(zip(codigo_norm, ciclo_norm)), index=df.index)
+
+    for parche in parches:
+        if not parche.get('activo', True):
+            continue
+        pid = parche.get('id', 'sin_id')
+        campo = parche.get('campo')
+        nuevo_valor = parche.get('nuevo_valor')
+        registros = parche.get('registros', [])
+        if not campo or not registros:
+            continue
+        if campo not in df.columns:
+            logger.warning(f"⚠️ Parche '{pid}': la columna '{campo}' no existe, se omite")
+            continue
+        claves_parche = {
+            (str(r.get('codigo', '')).strip().zfill(6), str(r.get('ciclo', '')).strip().zfill(2))
+            for r in registros
+        }
+        mask = claves_df.isin(claves_parche)
+        n = int(mask.sum())
+        if n > 0:
+            df.loc[mask, campo] = nuevo_valor
+            logger.info(f"🩹 Parche '{pid}': {n} registro(s) → {campo} = '{nuevo_valor}'")
+        else:
+            logger.info(f"🩹 Parche '{pid}': sin registros coincidentes en este archivo")
     return df
 
 def standardize_codes(df, code_columns):
@@ -1242,7 +1302,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         # Estandarizar códigos a 6 dígitos para asegurar comparación correcta
         code_columns = [columna_codigo, 'Código promotor', 'Código recuperador']
         df = standardize_codes(df, code_columns)
-        
+
+        # --- PASO 1.1b: Aplicar parches manuales (parches.json) ---
+        df = aplicar_parches(df)
+
         # --- PASO 2: Filtrar fraudes INMEDIATAMENTE después de la limpieza ---
         logger.info(f"Filtrando {len(LISTA_FRAUDE)} códigos de fraude")
         registros_antes_filtrado = len(df)
