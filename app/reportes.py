@@ -1316,7 +1316,11 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
         df_recup_000124_raw = None
         df_recup_000124_sin_links = None
         df_recup_000124_completo = None
-        
+
+        df_autcart_raw = None
+        df_autcart_sin_links = None
+        df_autcart_completo = None
+
         # --- PASO 2.1: Filtrar por códigos de recuperador a excluir (y guardar subset para hoja RECUPERADOR_000124) ---
         if CODIGOS_RECUPERADOR_EXCLUIR and 'Código recuperador' in df_filtrado.columns:
             registros_antes_recup = len(df_filtrado)
@@ -1333,6 +1337,18 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             eliminados_recup = registros_antes_recup - len(df_filtrado)
             if eliminados_recup > 0:
                 logger.info(f"🔍 Filtro por recuperador: Excluidos códigos {CODIGOS_RECUPERADOR_EXCLUIR}. Registros: {registros_antes_recup} → {len(df_filtrado)} ({eliminados_recup} eliminados)")
+
+        # --- PASO 2.2: Separar registros con 'Situación crédito' distinta a 'Entregado' (hoja Autorizado por Cartera) ---
+        col_situacion = 'Situación crédito'
+        if col_situacion in df_filtrado.columns:
+            registros_antes_autcart = len(df_filtrado)
+            situ_norm = df_filtrado[col_situacion].astype(str).str.strip().str.casefold()
+            mask_autcart = df_filtrado[col_situacion].notna() & (situ_norm != 'entregado')
+            df_autcart_raw = df_filtrado[mask_autcart].copy()
+            df_filtrado = df_filtrado[~mask_autcart]
+            eliminados_autcart = registros_antes_autcart - len(df_filtrado)
+            if eliminados_autcart > 0:
+                logger.info(f"🔍 Filtro Situación crédito: separados {eliminados_autcart} registros distintos a 'Entregado' para hoja 'Autorizado por Cartera'. Registros: {registros_antes_autcart} → {len(df_filtrado)}")
         
         # Verificación de integridad de datos - ANTES de transformaciones (sobre datos filtrados)
         medio_comunic_1_antes = df_filtrado['Medio comunic. 1'].notna().sum() if 'Medio comunic. 1' in df_filtrado.columns else 0
@@ -1417,6 +1433,31 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             dr = agregar_columnas_dias_ultimo_pago_y_alerta(dr)
             df_recup_000124_sin_links = dr
             logger.info(f"📋 Preparados {len(df_recup_000124_sin_links)} registros para hoja RECUPERADOR_000124")
+
+        # --- Pipeline para hoja Autorizado por Cartera (misma estructura que informe completo) ---
+        if df_autcart_raw is not None and len(df_autcart_raw) > 0:
+            da = clean_phone_numbers(df_autcart_raw.copy())
+            if 'Ciclo' in da.columns:
+                da['Ciclo'] = pd.to_numeric(da['Ciclo'], errors='coerce').fillna(0).astype(int).astype(str).str.zfill(2)
+            da = add_geolocation_links(da, columna_geolocalizacion)
+            da = da.sort_values(by=columna_mora, ascending=False).copy()
+            da = add_par_column(da, columna_mora)
+            if 'link_texto' in da.columns and columna_geolocalizacion in da.columns:
+                geo_idx = da.columns.get_loc(columna_geolocalizacion)
+                da.insert(geo_idx + 1, 'Link de Geolocalización', da['link_texto'])
+            df_autcart_completo = da.copy()
+            da = da.drop(columns=['link_texto', 'link_url'], errors='ignore')
+            if 'Código acreditado' in da.columns:
+                cols = da.columns.tolist()
+                cols.remove('Código acreditado')
+                cols.insert(0, 'Código acreditado')
+                da = da[cols]
+            da = da.loc[:, ~da.columns.duplicated()] if da.columns.duplicated().any() else da
+            da = agregar_columna_concepto_deposito(da.copy())
+            da = agregar_columnas_riesgo_y_mora(da.copy())
+            da = agregar_columnas_dias_ultimo_pago_y_alerta(da)
+            df_autcart_sin_links = da
+            logger.info(f"📋 Preparados {len(df_autcart_sin_links)} registros para hoja Autorizado por Cartera")
 
         # --- PASO 3: Ordenar y añadir columnas calculadas (sobre datos filtrados) ---
         df_ordenado = df_filtrado.sort_values(by=columna_mora, ascending=False).copy()
@@ -1802,6 +1843,7 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 'X_Coordinación',
                 'X_Recuperador',
                 'RECUPERADOR_000124',
+                'Autorizado por Cartera',
                 'Mora',
                 'Cuentas con saldo vencido',
                 'Liquidación anticipada',
@@ -2519,6 +2561,30 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 aplicar_formato_alerta(ws_recup, df_recup_000124_sin_links)
                 crear_tabla_excel(ws_recup, df_recup_000124_sin_links, 'RECUPERADOR_000124', incluir_columnas_adicionales=False)
                 logger.info(f"✅ Hoja RECUPERADOR_000124 creada con {len(df_recup_000124_sin_links)} registros")
+
+            # --- Hoja Autorizado por Cartera (registros con Situación crédito distinta a 'Entregado') ---
+            if df_autcart_sin_links is not None and len(df_autcart_sin_links) > 0:
+                df_autcart_sin_links.to_excel(writer, sheet_name='Autorizado por Cartera', index=False, startrow=1)
+                ws_autcart = writer.sheets['Autorizado por Cartera']
+                if 'Código acreditado' in df_autcart_sin_links.columns:
+                    for col_idx in range(1, ws_autcart.max_column + 1):
+                        if ws_autcart.cell(row=2, column=col_idx).value == 'Código acreditado':
+                            for row in range(3, ws_autcart.max_row + 1):
+                                ws_autcart.cell(row=row, column=col_idx).number_format = '@'
+                            break
+                aplicar_formato_texto_concepto_deposito(ws_autcart, df_autcart_sin_links)
+                aplicar_formato_condicional(ws_autcart, columna_mora, len(df_autcart_sin_links))
+                if 'Link de Geolocalización' in df_autcart_sin_links.columns and df_autcart_completo is not None:
+                    link_col_autcart = df_autcart_sin_links.columns.get_loc('Link de Geolocalización') + 1
+                    for i, (_, row) in enumerate(df_autcart_completo.iterrows()):
+                        row_num = i + 3
+                        if 'link_texto' in df_autcart_completo.columns and 'link_url' in df_autcart_completo.columns:
+                            escribir_hipervinculo_excel(ws_autcart, row_num, link_col_autcart, row['link_texto'], row['link_url'])
+                aplicar_formato_final(ws_autcart, df_autcart_sin_links, es_hoja_mora=False)
+                aplicar_formato_porcentaje_mora(ws_autcart, df_autcart_sin_links)
+                aplicar_formato_alerta(ws_autcart, df_autcart_sin_links)
+                crear_tabla_excel(ws_autcart, df_autcart_sin_links, 'Autorizado por Cartera', incluir_columnas_adicionales=False)
+                logger.info(f"✅ Hoja Autorizado por Cartera creada con {len(df_autcart_sin_links)} registros")
 
             # --- PASO 6.1: Crear hoja "Mora" ---
             # Verificar columnas duplicadas antes de escribir hoja Mora
