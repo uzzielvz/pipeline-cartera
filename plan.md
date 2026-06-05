@@ -1,348 +1,38 @@
-# Plan de Implementación — Nuevo Formato de Reportes
-
-> Estrategia: cambios incrementales, uno a la vez. Cada iteración se valida antes de continuar.
-> Si una validación falla → se revierte el cambio y se ajusta antes de avanzar.
-
----
-
-## Estado actual del output
-
-```
-R_Completo                  ← 71 cols
-X_Coordinación              ← 2 pivots (fuente: R_Completo)
-X_Recuperador               ← 2 pivots (fuente: R_Completo)
-RECUPERADOR_000124          ← 71 cols + extras
-Mora                        ← orden actual (empieza con Código acreditado)
-Cuentas con saldo vencido   ← sin cambios
-Liquidación anticipada      ← fórmulas apuntan a R_Completo
-Atlacomulco                 ← ELIMINAR
-Maravatio                   ← ELIMINAR
-Metepec                     ← ELIMINAR
-Tenancingo                  ← ELIMINAR
-Valle de bravo              ← ELIMINAR
-```
-
-## Estado objetivo del output
-
-```
-R_Completo                  ← 74 cols (71 + 3 nuevas)
-[DDMMYYYY]  (ej: 31032026)  ← copia idéntica de R_Completo
-[MesAño]    (ej: Abril2026) ← mismas 74 cols, filtrado por Inicio ciclo siguiente mes
-X_Coordinación              ← 6 pivots (lo modifica el usuario en la plantilla)
-X_Recuperador               ← 2 pivots (sin cambios estructurales)
-RECUPERADOR_000124          ← sin cambios
-Mora                        ← reordenada (empieza con Nom. región)
-Cuentas con saldo vencido   ← sin cambios
-Liquidación anticipada      ← sin cambios (Python ya escribe fórmulas dinámicas)
-```
-
----
-
-## Iteración 1 — Eliminar hojas por coordinación
-
-**Objetivo**: quitar las hojas `Atlacomulco`, `Maravatio`, `Metepec`, `Tenancingo`, `Valle de bravo` del output.
-
-**Archivo a modificar**: `app/reportes.py`
-
-**Cambio técnico**:
-- Buscar la sección que itera por coordinaciones y crea una hoja por cada una
-- Comentar o eliminar ese bloque completo
-- No tocar nada más
-
-**Cómo validar**:
-1. Subir cualquier reporte de antigüedad al sistema
-2. Descargar el Excel generado
-3. Confirmar que el archivo ya NO contiene hojas con nombres de coordinación
-4. Confirmar que R_Completo, X_Coordinación, X_Recuperador, Mora, etc. siguen presentes y correctas
-
-**Cómo revertir**: descomentar el bloque eliminado
-
----
-
-## Iteración 2 — Cambiar fórmula PAR
-
-**Objetivo**: actualizar la clasificación de mora de 7 categorías ('PAR 0'…'PAR 6') a 8 categorías numéricas.
-
-**Archivo a modificar**: `app/reportes.py`
-
-**Cambio técnico**:
-Reemplazar la función que calcula PAR con la nueva lógica:
-
-```python
-# ANTES
-def calcular_par(mora):
-    if mora == 0:   return 'PAR 0'
-    if mora <= 7:   return 'PAR 1'
-    if mora <= 15:  return 'PAR 2'
-    if mora <= 30:  return 'PAR 3'
-    if mora <= 60:  return 'PAR 4'
-    if mora <= 90:  return 'PAR 5'
-    return 'PAR 6'
-
-# DESPUÉS
-def calcular_par(mora):
-    if mora == 0:        return "0"
-    if mora <= 7:        return 7
-    if mora <= 15:       return 15
-    if mora <= 30:       return 30
-    if mora <= 60:       return 60
-    if mora <= 90:       return 90
-    if mora <= 180:      return "Mayor_90"
-    return "Mayor_180"
-```
-
-**Cómo validar**:
-1. Generar reporte con el sistema
-2. Abrir R_Completo, buscar la columna `PAR`
-3. Revisar ~5 registros con distintos días de mora y confirmar que el valor PAR corresponde a la nueva escala
-4. Confirmar que los pivots de X_Recuperador reflejan las nuevas categorías al refrescar
-
-**Cómo revertir**: restaurar la función anterior
-
----
-
-## Iteración 3 — Agregar 3 columnas nuevas a R_Completo
-
-**Objetivo**: agregar al final de R_Completo las columnas `Cuotas sin pagar` (BT), `Saldo_Riesgo_total` (BU) y `Combinado` (BV).
-
-**Archivo a modificar**: `app/reportes.py` y posiblemente `config.py`
-
-**Lógica de cada columna**:
-
-```python
-# Requiere: 'Días desde el último pago', 'Periodicidad', 'Días de mora', 'Saldo total', 'Saldo riesgo total'
-# PERIODICIDAD_A_DIAS ya existe en config.py: {'semanal':7, 'catorcenal':14, 'quincenal':15, 'mensual':30, ...}
-
-def calcular_cuotas_sin_pagar(dias_ultimo_pago, periodicidad):
-    dias = PERIODICIDAD_A_DIAS.get(str(periodicidad).lower(), 0)
-    if dias == 0:
-        return 0
-    return dias_ultimo_pago / dias   # decimal, sin redondear
-
-def calcular_saldo_riesgo_total_nuevo(mora, saldo_total):
-    return saldo_total if mora > 30 else 0
-
-def calcular_combinado(mora, dias_ultimo_pago, periodicidad, saldo_riesgo_total_nuevo):
-    dias = PERIODICIDAD_A_DIAS.get(str(periodicidad).lower(), 0)
-    if mora <= 30:
-        return round(dias_ultimo_pago / dias) if dias > 0 else 0
-    else:
-        return saldo_riesgo_total_nuevo
-```
-
-**Nota importante**: `Saldo_Riesgo_total` en la col BU es una **nueva definición** distinta a `Saldo riesgo total` (col ~BN) que ya existe. La del BU = `saldo_total if mora > 30 else 0`. La existente = suma de saldos vencidos. Ambas coexisten.
-
-**Cómo validar**:
-1. Generar reporte
-2. En R_Completo verificar que existen 3 columnas nuevas al final: `Cuotas sin pagar`, `Saldo_Riesgo_total`, `Combinado`
-3. Tomar 3-5 registros y calcular manualmente los valores para confirmar la lógica
-4. Verificar que el total de columnas en R_Completo ahora es 74
-
-**Cómo revertir**: eliminar las 3 columnas del código de escritura de R_Completo
-
----
-
-## Iteración 4 — Generar hoja de fecha (copia de R_Completo)
-
-**Objetivo**: Python genera una segunda hoja con nombre = fecha del corte en formato DDMMYYYY, con el mismo contenido que R_Completo.
-
-**Archivo a modificar**: `app/reportes.py`
-
-**Cambio técnico**:
-- Después de escribir R_Completo en el bloque openpyxl, crear hoja `fecha_actual` con mismos datos
-- Mismas 74 columnas, mismo formato tipo tabla
-
-**Estado**: ✅ Implementada (commit `36a2b92`) — ⚠️ pendiente corrección de bugs (ver abajo)
-
-### Bugs encontrados en iter 4
-
-**Bug 4-A: Hoja de fecha duplicada**
-- **Causa raíz**: El flujo con plantilla escribe la hoja de fecha DOS veces:
-  1. En el bloque `openpyxl` (iter 4) crea `ws_fecha` con nombre `fecha_actual`
-  2. En el bloque `with writer:` (ExcelWriter en modo append), el código preexistente escribe `hoja_informe = fecha_actual` vía `df_completo_sin_links.to_excel(writer, sheet_name=hoja_informe, ...)` — línea ~2219
-  - Como ExcelWriter tiene `if_sheet_exists='new'`, genera una segunda hoja con nombre alternativo (ej: `04042026` y `040420261`)
-- **Fix**: Cuando `usar_plantilla = True`, omitir el bloque de escritura de `hoja_informe` via ExcelWriter (ya existe creada correctamente por openpyxl). Mantener la variable `hoja_informe = fecha_actual` para que las fórmulas BUSCARV en `Liquidación anticipada` sigan funcionando.
-
-**Bug 4-B: Hoja de fecha sin formato tipo tabla**
-- **Causa raíz**: La hoja `ws_fecha` se crea con celdas crudas. R_Completo tiene tabla formal porque usa la plantilla (tabla preexistente). `ws_fecha` se crea desde cero y no hereda ninguna tabla.
-- **Fix**: Agregar `openpyxl.worksheet.table.Table` a `ws_fecha` con el mismo estilo (`TableStyleLight1`), rango `A2:BV{ultima_fila}`, nombre `T_{fecha_actual}`.
-
-**Cómo validar**:
-1. Generar reporte
-2. Confirmar que hay UNA SOLA hoja con la fecha (ej: `04042026`)
-3. Confirmar que tiene exactamente el mismo número de filas y columnas que R_Completo
-4. Confirmar que tiene formato tipo tabla (franjas alternadas, encabezado con color)
-
----
-
-## Iteración 5 — Generar hoja del siguiente período
-
-**Objetivo**: Python genera una hoja `Abril2026` con los registros cuyo `Inicio ciclo` cae en abril 2026.
-
-**Archivo a modificar**: `app/reportes.py`
-
-**Estado**: ✅ Implementada (commit `aa3cced` + fix `08cee9b`) — ⚠️ pendiente corrección de bugs (ver abajo)
-
-### Bugs encontrados en iter 5
-
-**Bug 5-A: Filtro por mes incorrecto (Mayo en lugar de Abril)**
-- **Causa raíz**: La lógica calcula `mes_siguiente = (fecha_reporte.month % 12) + 1`. Si el archivo subido tiene corte en **abril 2026**, entonces `mes_siguiente = 5` (mayo). El plan original asumía un corte de **marzo 2026**.
-- **Acuerdo con usuario**: Por ahora la hoja es siempre `Abril2026`, filtrando `Inicio ciclo` con `mes == 4 AND año == 2026`.
-- **Fix a corto plazo**: Hardcodear `mes_filtro = 4`, `anio_filtro = 2026`, `nombre_hoja_siguiente = "Abril2026"`.
-- **Fix a largo plazo** (cuando se revise): cambiar la lógica a `mes_filtro = fecha_reporte.month`, `anio_filtro = fecha_reporte.year` — es decir, filtrar el MES DEL CORTE, no el siguiente.
-
-**Bug 5-B: Hoja Abril2026 sin formato tipo tabla**
-- **Causa raíz**: Igual que Bug 4-B — `ws_siguiente` se crea con celdas crudas, sin tabla openpyxl.
-- **Fix**: Agregar `Table` a `ws_siguiente` con estilo `TableStyleLight1`, rango `A2:BV{ultima_fila}`, nombre `T_Abril2026`.
-
-**Cómo validar**:
-1. Generar reporte
-2. Confirmar que aparece hoja `Abril2026`
-3. Confirmar que todos sus registros tienen `Inicio ciclo` en abril 2026 (no mayo, no otros meses)
-4. Confirmar formato tipo tabla (franjas, encabezado)
-
-### Corrección conjunta de iter 4 y 5 (un solo commit)
-
-Los tres bugs (4-A, 4-B, 5-A, 5-B) se corrigen en una sola iteración:
-1. Omitir escritura de `hoja_informe` via ExcelWriter cuando `usar_plantilla = True`
-2. Hardcodear filtro: `mes=4`, `año=2026`, `nombre="Abril2026"`
-3. Agregar `Table` a `ws_fecha` y `ws_siguiente` con openpyxl
-
-**Cómo revertir**: restaurar la escritura de `hoja_informe` vía ExcelWriter y el cálculo dinámico de `mes_siguiente`
-
----
-
-## Iteración 6 — Reordenar columnas en hoja Mora
-
-**Objetivo**: cambiar el orden inicial de columnas en la hoja `Mora` para que empiece con `Nom. región` en lugar de `Código acreditado`.
-
-**Nuevo orden de primeras 7 columnas**:
-```
-A: Nom. región
-B: Coordinación
-C: Código promotor
-D: Nombre promotor
-E: Código recuperador
-F: Nombre recuperador
-G: Código acreditado   ← movido de A a G
-```
-El resto de columnas (8 en adelante) permanece igual.
-
-**Archivo a modificar**: `app/reportes.py` — sección que escribe la hoja Mora
-
-**Cómo validar**:
-1. Generar reporte
-2. Abrir hoja `Mora`
-3. Confirmar que col A = `Nom. región` y col G = `Código acreditado`
-4. Confirmar que el número total de filas y columnas es correcto
-
-**Cómo revertir**: restaurar el orden original de columnas
-
----
-
-## Iteración 7 — Ajustar Liquidación anticipada
-
-**Objetivo**: verificar y ajustar que las fórmulas VLOOKUP en `Liquidación anticipada` apunten correctamente a `R_Completo` con el nuevo rango de 74 columnas.
-
-**Contexto**: Python ya escribe estas fórmulas dinámicamente. Solo verificar que los índices de columna siguen siendo correctos con las 3 nuevas columnas al final (no afectan los índices existentes ya que se agregan al final).
-
-**Archivo a modificar**: `app/reportes.py` — sección de Liquidación anticipada
-
-**Qué revisar**:
-- Los VLOOKUP usan índices como 8, 9, 23, 26, 27, 28, 52 — todos menores a 71, así que las 3 nuevas columnas en posición 72-74 no los afectan
-- El rango del VLOOKUP debe actualizarse de `$A:BP` a `$A:BV` para consistencia
-
-**Cómo validar**:
-1. En la hoja `Liquidación anticipada` ingresar manualmente un Código acreditado en col A
-2. Confirmar que las celdas B-K se rellenan con los datos correctos del acreditado
-3. Verificar que `Cantidad a liquidar` (col K) calcula correctamente
-
-**Cómo revertir**: ajustar los rangos de VLOOKUP de vuelta
-
----
-
-## Iteración 8 — Crear nueva plantilla con pivots actualizados
-
-**Objetivo**: tener una plantilla Excel con la estructura del nuevo diseño lista para que Python la use como base.
-
----
-
-### Paso 8A — Intento automatizado (Python limpia el archivo nuevo)
-
-**Lo que hace el script**:
-1. Copia `ReportedeAntiguedad_nuevo_31032026.xlsx` → `PLANTILLA_NUEVA.xlsx`
-2. Vacía los datos de las hojas de datos (R_Completo, 31032026, Abril2026) — deja solo headers y definición de tabla
-3. Elimina las hojas externas: `Asignación`, `Recuperación`, `Cobranza`
-4. Redirige los pivot caches de `31032026` → `R_Completo` directamente en el XML
-5. Actualiza las fórmulas de `Liquidación anticipada` que referencian `'31032026'` → `R_Completo`
-
-**Riesgo**: openpyxl no soporta pivots nativamente — se manipulan directo en XML. Puede que algún pivot quede corrupto.
-
-**El archivo original `ReportedeAntiguedad_nuevo_31032026.xlsx` no se toca** — el script trabaja sobre una copia.
-
-**Cómo validar**:
-1. Abrir `PLANTILLA_NUEVA.xlsx` en Excel
-2. Confirmar que las hojas externas (Asignación, Recuperación, Cobranza) ya no están
-3. Confirmar que R_Completo existe pero está vacía (solo headers)
-4. Ir a X_Coordinación → clic derecho en cada pivot → "Actualizar" → deben cargar sin error
-5. Ir a X_Recuperador → mismo proceso
-6. Confirmar que los pivot caches ahora apuntan a R_Completo (al actualizar no piden buscar fuente)
-
-**Si el paso 8A funciona** → continuar con iteración 9.
-
----
-
-### Paso 8B — Ajuste manual por el usuario (si 8A falla parcialmente)
-
-Si los pivots quedaron corruptos o las referencias incorrectas, el usuario corrige manualmente en Excel:
-
-1. **Ampliar el cache de X_Coordinación**:
-   - Cambiar fuente de `R_Completo!A2:BQ` → `R_Completo!A2:BV`
-   - Esto expone los 3 campos nuevos: `Cuotas sin pagar`, `Saldo_Riesgo_total`, `Combinado`
-
-2. **Agregar 4 pivots nuevos** (duplicar los existentes para la Sección 2):
-   - Copiar TablaDinámica2 → posición A24:G32
-   - Copiar TablaDinámica3 → posición AH7:AZ16 y AH23:AZ32
-   - Crear TablaDinámica6 en I7:AA16: filas=[Coordinación], cols=[PAR × VALUES], valores=[Cuenta Cuotas sin pagar + Suma Saldo_Riesgo_total]
-   - Crear TablaDinámica7 en I23:AA32: igual que TablaDinámica6
-
-3. **Agregar fila TOTAL GENERAL** en fila 34:
-   - Fórmula: `=IFERROR(SUM(X16, X32), " ")` para cada columna de datos
-
-4. **Agregar etiquetas estáticas** de PAR en filas 7-8 y 23-24 (valores: 7, 15, 30, 60, 90, Mayor_90, Mayor_180)
-
-**Notas**:
-- Los pivots de X_Recuperador no necesitan cambios estructurales
-- Si la Sección 2 debe mostrar datos del siguiente período con filtro (opción 2), agregar page filter `Inicio ciclo = mes siguiente` a los pivots 4-6 — **pendiente confirmar**
-
----
-
-## Iteración 9 — Validación integral y ajustes finales
-
-**Objetivo**: prueba end-to-end con un reporte de antigüedad real. Verificar que todo el output es correcto.
-
-**Checklist de validación**:
-- [ ] R_Completo: 74 columnas, datos correctos, sin fraudes
-- [ ] [DDMMYYYY]: idéntico a R_Completo
-- [ ] [MesAño]: registros filtrados por Inicio ciclo del siguiente mes
-- [ ] X_Coordinación: 6 pivots con datos, fila TOTAL GENERAL correcta
-- [ ] X_Recuperador: 2 pivots, datos correctos
-- [ ] RECUPERADOR_000124: sin cambios
-- [ ] Mora: columnas en nuevo orden
-- [ ] Cuentas con saldo vencido: sin cambios
-- [ ] Liquidación anticipada: fórmulas funcionan al ingresar un código
-- [ ] No aparecen hojas por coordinación
-- [ ] Columna PAR: valores en nuevo formato (0, 7, 15, ..., Mayor_180)
-- [ ] Columnas nuevas (BT-BV): calculadas correctamente
-
----
-
-## Referencia rápida de archivos
-
-| Archivo | Rol |
-|---|---|
-| `app/reportes.py` | Lógica principal de generación de Excel |
-| `config.py` | Constantes: LISTA_FRAUDE, PERIODICIDAD_A_DIAS, COLUMN_MAPPING, etc. |
-| `PLANTIILA2.xlsx` | Plantilla actual (se reemplazará con nueva plantilla del usuario) |
-| `research_cambios.md` | Documentación detallada de todos los cambios |
-| `research.md` | Documentación del sistema actual |
+# CREDIFLEXI / automatizador-crediflexi — Plan / Hoja de ruta
+
+> Documento vivo. Última actualización: 2026-06-04 (commit `fe8d8e0`).
+> Contexto completo en `research.md`. Detalle histórico de iteraciones del nuevo formato en `research_cambios.md`.
+> Regla: derivar el backlog del estado real del código (lo que falta para el siguiente hito), ordenado por dependencia.
+
+## Objetivo actual
+Cerrar la deuda recurrente que rompe el reporte cada mes y endurecer el flujo individual (ya maduro) antes de retomar el flujo grupal (stub). En concreto: que el reporte mensual NO requiera editar código cada corte, y dejar configurable el criterio de la hoja "Autorizado por Cartera" que quedó hardcodeado.
+
+## Siguiente paso inmediato
+**Des-hardcodear el corte mensual** (`Marzo2026`, `Abril2026`, fecha `2026-04-01`) en `app/reportes.py`.
+- Hoy: nombres de hoja y fecha de corte están fijos en el código (`:1705`, `:1777`) y atados a los pivot caches de la plantilla (nombres fijos `Marzo2026`/`Abril2026`).
+- Acción mínima: derivar nombre de hoja y fecha de corte de la fecha del reporte (mes actual = histórico, mes siguiente = nuevo), centralizando en una sola variable/constante.
+- Restricción dura: los pivot caches de `PLANTIILA2.xlsx` apuntan a esos nombres por XML → si se renombra la hoja sin tocar la plantilla, los pivots se rompen. Decidir antes: (a) mantener nombres fijos y solo parametrizar la FECHA de corte, o (b) renombrar también en el XML de la plantilla. Confirmar con el dueño cuál.
+- Criterio de aceptación: subir un input de un mes distinto a abril y obtener las dos hojas con el nombre/mes correcto sin editar código, con los pivots vivos.
+
+## Backlog ordenado (por dependencia)
+- [ ] **Parametrizar fecha de corte mensual** (siguiente paso). Aceptación: ver arriba. Bloquea cualquier corrida de un mes ≠ abril 2026.
+- [ ] **Decidir y aplicar criterio configurable de "Autorizado por Cartera"**. Hoy hardcodeado a `Situación crédito ≠ Entregado` (`:1341`). Opciones abiertas (pendiente decisión del dueño): solo `Autorizado por cartera`; `Autorizado por cartera` + `Autorizado por tesorería`; lista configurable en `config.py`. Aceptación: el set de estatus que va a la hoja se lee de `config.py`, no del código; un test manual confirma el conteo esperado (hoy: 128 de 342 en el input de ejemplo).
+- [ ] **Crear `requirements.txt`** con versiones fijadas (flask, flask-login, flask-sqlalchemy, flask-wtf, pandas, openpyxl, werkzeug). Aceptación: `pip install -r requirements.txt` en un venv limpio levanta la app. El README ya lo menciona pero el archivo no existe.
+- [ ] **Mover `SECRET_KEY` y contraseñas semilla a variables de entorno** (`config.py`, `app/auth.py`). Aceptación: no quedan secretos en el repo; la app lee de env con fallback solo para dev. Depende de tener `requirements.txt`/onboarding claro para documentar las env vars.
+- [ ] **Sincronizar README con el estado real**: puerto 5001 (no 5000), retirar mención de hojas por coordinación y del reporte de colaboradores (ya eliminados), documentar `parches.json` y la hoja "Autorizado por Cartera". Aceptación: README sin features inexistentes.
+- [ ] **Endurecer recorte de columnas de R_Completo**: `df_r_completo.iloc[:, :74]` por posición fija es frágil (`research.md` deuda). Aceptación: seleccionar por nombre de columna o validar el conteo y fallar con mensaje claro si el input cambia de forma.
+- [ ] **Tests mínimos del pipeline individual**: al menos un test que corra `procesar_reporte_antiguedad()` sobre `test_abril2026_input.xlsx` y verifique nº de hojas, nº de columnas de R_Completo y conteos de los subsets (fraude/RECUPERADOR_000124/Autorizado por Cartera). Aceptación: `pytest` pasa en verde. Depende de `requirements.txt`.
+
+## Bloqueado / esperando
+- **Flujo grupal** (`procesar_antiguedad_grupal`, `:3141`): STUB que genera un Excel dummy de 1 hoja. Detecta 5 tipos de archivo (`detectar_tipo_archivo`, `:3111`) pero no consolida nada. **BLOQUEADO**: falta la especificación del dueño — qué columnas/hojas debe producir, qué cruces hacer entre los 5 archivos y ejemplos de input. No avanzar sin spec.
+- **Renombrado de hojas mensuales en la plantilla**: esperando decisión (a) vs (b) del "siguiente paso inmediato" antes de tocar el XML de pivots de `PLANTIILA2.xlsx`.
+- **Criterio de "Autorizado por Cartera"**: esperando decisión del dueño entre las opciones listadas en el backlog.
+
+## Hecho recientemente
+- **`fe8d8e0`** — Hoja "Autorizado por Cartera": separa registros con `Situación crédito ≠ Entregado` a su propia hoja, mismo pipeline que RECUPERADOR_000124.
+- **`dcc07bb`** — Sistema `parches.json`: correcciones manuales por `codigo`+`ciclo` sin tocar código (1er parche: reasignar `Coordinación`=`Oficina Central` a 18 acreditados).
+- **`1b63eed`** — Abril2026 captura todos los registros con `Inicio ciclo` ≥ 2026-04-01.
+- **`104e154`** — Hoja histórica Marzo2026 (registros antes de abril 2026).
+- **`021445...` / `021449e`** — Columna `Suma` (col 75): 1 si días de mora ∈ [1,30].
+- **`f3bace7`** — Recorte de R_Completo a 74 columnas (quita columnas basura del origen).
+- **`research.md`** reescrito como doc vivo con el mapeo completo INPUT → TRANSFORMACIONES → OUTPUT.
