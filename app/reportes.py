@@ -1717,6 +1717,19 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
                 logger.warning(f"⚠️ Columna '{col_inicio_ciclo}' no encontrada — hoja '{nombre_hoja_siguiente}' se crea vacía")
                 df_siguiente = df_r_completo.iloc[0:0].copy()
 
+            # --- Mover créditos de Oficina Central de Abril a Marzo ---
+            col_coordinacion = 'Coordinación'
+            if col_coordinacion in df_siguiente.columns:
+                mask_oficina_central = df_siguiente[col_coordinacion].astype(str).str.strip().str.lower() == 'oficina central'
+                df_oficina_central = df_siguiente[mask_oficina_central].copy()
+                df_siguiente = df_siguiente[~mask_oficina_central].copy()
+                n_movidos = len(df_oficina_central)
+                if n_movidos > 0:
+                    logger.info(f"🔄 {n_movidos} registros de 'Oficina Central' movidos de Abril a Marzo")
+            else:
+                df_oficina_central = pd.DataFrame(columns=df_r_completo.columns)
+                logger.warning(f"⚠️ Columna '{col_coordinacion}' no encontrada — no se movieron registros de Oficina Central")
+
             if nombre_hoja_siguiente in wb_plantilla.sheetnames:
                 del wb_plantilla[nombre_hoja_siguiente]
             ws_siguiente = wb_plantilla.create_sheet(title=nombre_hoja_siguiente)
@@ -1783,6 +1796,10 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             if col_inicio_ciclo in df_r_completo.columns:
                 serie_ciclo_hist = pd.to_datetime(df_r_completo[col_inicio_ciclo], errors='coerce')
                 df_historico = df_r_completo[serie_ciclo_hist < corte_historico].copy()
+                # Agregar registros de Oficina Central movidos desde Abril
+                if len(df_oficina_central) > 0:
+                    df_historico = pd.concat([df_historico, df_oficina_central], ignore_index=True)
+                    logger.info(f"📋 Hoja '{nombre_hoja_historico}' incluye {len(df_oficina_central)} registros de Oficina Central (movidos de Abril)")
             else:
                 logger.warning(f"⚠️ Columna '{col_inicio_ciclo}' no encontrada — hoja '{nombre_hoja_historico}' se crea vacía")
                 df_historico = df_r_completo.iloc[0:0].copy()
@@ -1834,12 +1851,71 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
             ws_historico.add_table(tabla_historico)
             logger.info(f"✅ Hoja '{nombre_hoja_historico}' creada con {len(df_historico)} registros (acumulado hasta {corte_historico.date()})")
 
+            # --- Crear hoja SinCastigoMarzo (Marzo sin PAR Mayor_180) ---
+            nombre_hoja_sin_castigo = "SinCastigoMarzo"
+            col_par = 'PAR'
+            if col_par in df_historico.columns:
+                df_sin_castigo = df_historico[df_historico[col_par].astype(str).str.strip() != 'Mayor_180'].copy()
+                n_excluidos = len(df_historico) - len(df_sin_castigo)
+                logger.info(f"📋 Creando hoja '{nombre_hoja_sin_castigo}' ({len(df_sin_castigo)} registros, excluyendo {n_excluidos} con PAR=Mayor_180)...")
+            else:
+                df_sin_castigo = df_historico.copy()
+                logger.warning(f"⚠️ Columna '{col_par}' no encontrada — '{nombre_hoja_sin_castigo}' idéntica a '{nombre_hoja_historico}'")
+
+            if nombre_hoja_sin_castigo in wb_plantilla.sheetnames:
+                del wb_plantilla[nombre_hoja_sin_castigo]
+            ws_sin_castigo = wb_plantilla.create_sheet(title=nombre_hoja_sin_castigo)
+
+            # Encabezados en fila 2
+            for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                cell = ws_sin_castigo.cell(row=2, column=col_idx, value=col_name)
+                cell.font = Font(bold=True)
+            ws_sin_castigo.row_dimensions[2].height = EXCEL_CONFIG['header_height']
+
+            # Relleno azul en encabezado "Días de mora"
+            for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                if col_name == col_mora_nombre:
+                    ws_sin_castigo.cell(row=2, column=col_idx).fill = PatternFill(
+                        start_color=COLORS['light_blue'], end_color=COLORS['light_blue'], fill_type='solid')
+                    break
+
+            # Datos desde fila 3
+            for row_idx, (_, row) in enumerate(df_sin_castigo.iterrows(), start=3):
+                for col_idx, value in enumerate(row, start=1):
+                    cell = ws_sin_castigo.cell(row=row_idx, column=col_idx)
+                    cell.value = None if pd.isna(value) else value
+                    if col_idx in _cols_moneda_fecha_sig:
+                        cell.number_format = _cols_moneda_fecha_sig[col_idx]
+
+            # Formatos
+            if len(df_sin_castigo) > 0:
+                aplicar_formatos_moneda_fecha_openpyxl(ws_sin_castigo, df_sin_castigo, len(df_sin_castigo))
+                aplicar_formato_condicional(ws_sin_castigo, col_mora_nombre, len(df_sin_castigo))
+                aplicar_formato_porcentaje_mora(ws_sin_castigo, df_sin_castigo)
+                aplicar_formato_alerta(ws_sin_castigo, df_sin_castigo)
+            aplicar_formato_final(ws_sin_castigo, df_r_completo, es_hoja_mora=False)
+
+            # Tabla formal
+            ultima_col_sc = get_column_letter(len(df_r_completo.columns))
+            ultima_fila_sc = max(len(df_sin_castigo) + 2, 3)
+            tabla_sin_castigo = Table(
+                displayName="T_SinCastigoMarzo",
+                ref=f"A2:{ultima_col_sc}{ultima_fila_sc}"
+            )
+            tabla_sin_castigo.tableStyleInfo = TableStyleInfo(
+                name=EXCEL_CONFIG['table_style'], showFirstColumn=False,
+                showLastColumn=False, showRowStripes=False, showColumnStripes=False
+            )
+            ws_sin_castigo.add_table(tabla_sin_castigo)
+            logger.info(f"✅ Hoja '{nombre_hoja_sin_castigo}' creada con {len(df_sin_castigo)} registros")
+
             # --- ITERACIÓN 14: Reordenar pestañas ---
             ORDEN_HOJAS = [
                 'R_Completo',
-                fecha_actual,           # DDMMYYYY
-                nombre_hoja_historico,  # Marzo2026
-                nombre_hoja_siguiente,  # Abril2026
+                fecha_actual,              # DDMMYYYY
+                nombre_hoja_historico,     # Marzo2026
+                nombre_hoja_sin_castigo,   # SinCastigoMarzo
+                nombre_hoja_siguiente,     # Abril2026
                 'X_Coordinación',
                 'X_Recuperador',
                 'RECUPERADOR_000124',
