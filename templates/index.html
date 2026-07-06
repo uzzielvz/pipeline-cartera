@@ -19,14 +19,14 @@
             <div class="report-icon"><i class="fas fa-chart-bar"></i></div>
             <h3>Reporte Individual</h3>
             <p>Procesa un archivo Excel de antigüedad de cartera</p>
-            
+
             <div class="upload-zone" id="uploadZone1" onclick="document.getElementById('fileInput1').click()">
                 <div class="upload-content">
                     <div class="upload-icon"><i class="fas fa-folder-open"></i></div>
-                    <p>Arrastra tu archivo aquí</p>
-                    <small>o haz clic para seleccionar</small>
+                    <p>Reporte de Antigüedad (Yunius)</p>
+                    <small>Arrastra o haz clic para seleccionar</small>
                 </div>
-                <input type="file" id="fileInput1" accept=".xlsx,.xls" style="display: none;" 
+                <input type="file" id="fileInput1" accept=".xlsx,.xls" style="display: none;"
                        onchange="handleFileSelect(event, 1)">
             </div>
 
@@ -34,7 +34,26 @@
                 <div class="file-success">
                     <span id="fileName1"></span>
                 </div>
-                
+            </div>
+
+            <!-- Segundo archivo opcional: Rep_Cobranza -->
+            <div class="upload-zone upload-zone-secondary" id="uploadZoneCobranza" onclick="document.getElementById('fileInputCobranza').click()">
+                <div class="upload-content">
+                    <div class="upload-icon"><i class="fas fa-calendar-alt"></i></div>
+                    <p>Rep. Cobranza (opcional)</p>
+                    <small>Para agregar "Fecha próximo pago"</small>
+                </div>
+                <input type="file" id="fileInputCobranza" accept=".xlsx,.xls" style="display: none;"
+                       onchange="handleFileSelectCobranza(event)">
+            </div>
+
+            <div id="fileInfoCobranza" class="file-info" style="display: none;">
+                <div class="file-success file-success-secondary">
+                    <span id="fileNameCobranza"></span>
+                </div>
+            </div>
+
+            <div id="processSection1" style="display: none;">
                 <button class="process-btn" onclick="processFile(1)">
                     Procesar
                 </button>
@@ -230,6 +249,31 @@
     font-weight: 500;
 }
 
+.file-success-secondary {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.upload-zone-secondary {
+    margin-top: 16px;
+    padding: 20px 16px;
+    border-style: dotted;
+}
+
+.upload-zone-secondary .upload-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.upload-zone-secondary p {
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.upload-zone-secondary small {
+    font-size: 12px;
+}
+
 .process-btn {
     width: 100%;
     padding: 16px;
@@ -313,11 +357,13 @@
 // Variables globales para almacenar archivos
 let selectedFiles1 = [];
 let selectedFiles2 = [];
+let selectedFileCobranza = null;
 
 // Configurar drag & drop para ambas zonas
 document.addEventListener('DOMContentLoaded', function() {
     setupDragAndDrop(1);
     setupDragAndDrop(2);
+    setupDragAndDropCobranza();
 });
 
 function setupDragAndDrop(zoneNumber) {
@@ -392,7 +438,53 @@ function handleFiles(files, zoneNumber) {
 function displayFileInfo(file, zoneNumber) {
     const fileInfo = document.getElementById(`fileInfo${zoneNumber}`);
     const fileName = document.getElementById(`fileName${zoneNumber}`);
-    
+
+    fileName.textContent = file.name;
+    fileInfo.style.display = 'block';
+
+    // Mostrar botón de procesar si es zona 1
+    if (zoneNumber === 1) {
+        document.getElementById('processSection1').style.display = 'block';
+    }
+}
+
+function setupDragAndDropCobranza() {
+    const uploadZone = document.getElementById('uploadZoneCobranza');
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false);
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, () => uploadZone.classList.add('dragover'), false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, () => uploadZone.classList.remove('dragover'), false);
+    });
+
+    uploadZone.addEventListener('drop', e => {
+        const files = e.dataTransfer.files;
+        if (files.length === 1) {
+            selectedFileCobranza = files[0];
+            displayFileInfoCobranza(files[0]);
+        } else {
+            alert('Por favor selecciona solo un archivo de cobranza');
+        }
+    }, false);
+}
+
+function handleFileSelectCobranza(event) {
+    const files = event.target.files;
+    if (files.length === 1) {
+        selectedFileCobranza = files[0];
+        displayFileInfoCobranza(files[0]);
+    }
+}
+
+function displayFileInfoCobranza(file) {
+    const fileInfo = document.getElementById('fileInfoCobranza');
+    const fileName = document.getElementById('fileNameCobranza');
     fileName.textContent = file.name;
     fileInfo.style.display = 'block';
 }
@@ -439,13 +531,18 @@ function processFile(zoneNumber) {
     if (zoneNumber === 1) {
         // Procesar reporte individual
         if (selectedFiles1.length === 0) {
-            alert('Por favor selecciona un archivo');
+            alert('Por favor selecciona un archivo de antigüedad');
             return;
         }
-        
+
         const formData = new FormData();
         formData.append('archivo', selectedFiles1[0]);
-        
+
+        // Agregar archivo de cobranza si existe
+        if (selectedFileCobranza) {
+            formData.append('archivo_cobranza', selectedFileCobranza);
+        }
+
         processReport(formData, 'reportes/procesar_antiguedad');
     } else {
         // Procesar reporte grupal
@@ -516,15 +613,19 @@ function resetForms() {
     // Resetear archivos seleccionados
     selectedFiles1 = [];
     selectedFiles2 = [];
-    
+    selectedFileCobranza = null;
+
     // Ocultar info de archivos
     document.getElementById('fileInfo1').style.display = 'none';
     document.getElementById('fileInfo2').style.display = 'none';
-    
+    document.getElementById('fileInfoCobranza').style.display = 'none';
+    document.getElementById('processSection1').style.display = 'none';
+
     // Limpiar inputs
     document.getElementById('fileInput1').value = '';
     document.getElementById('fileInput2').value = '';
-    
+    document.getElementById('fileInputCobranza').value = '';
+
     // Limpiar lista de archivos
     document.getElementById('fileList2').innerHTML = '';
 }

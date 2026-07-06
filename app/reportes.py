@@ -1256,12 +1256,13 @@ def crear_tabla_excel(worksheet, df, sheet_name, incluir_columnas_adicionales=Fa
         # Si hay algún error, no interrumpir el proceso principal
         logger.warning(f"No se pudo crear la tabla para la hoja {sheet_name}: {str(e)}")
 
-def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
+def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None, archivo_cobranza_path=None):
     """Procesa el reporte de antigüedad con mejoras de robustez y mantenibilidad
-    
+
     Args:
         archivo_path: Ruta del archivo Excel a procesar
         codigos_a_excluir: Lista opcional de códigos de acreditado a excluir del reporte
+        archivo_cobranza_path: Ruta opcional del archivo Rep_Cobranza para agregar Fecha próximo pago
     """
     try:
         # Validar archivo
@@ -1305,6 +1306,52 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None):
 
         # --- PASO 1.1b: Aplicar parches manuales (parches.json) ---
         df = aplicar_parches(df)
+
+        # --- PASO 1.1c: Cargar y cruzar Fecha próximo pago desde Rep_Cobranza ---
+        if archivo_cobranza_path and os.path.exists(archivo_cobranza_path):
+            try:
+                logger.info(f"📅 Cargando Rep_Cobranza desde: {archivo_cobranza_path}")
+                df_cobranza = pd.read_excel(archivo_cobranza_path, sheet_name='REPORTE DE COBRANZA', header=[7, 8])
+                # Flatten multiindex columns
+                df_cobranza.columns = [' '.join(str(x).strip() for x in col if 'Unnamed' not in str(x)).strip() for col in df_cobranza.columns]
+
+                # Normalizar código y ciclo para el cruce
+                col_cod_cob = 'Cód cliente/ Gpo.'
+                col_ciclo_cob = 'Ciclo real del cliente'
+                col_fecha_prox = 'Fecha próximo pago'
+
+                if col_cod_cob in df_cobranza.columns and col_ciclo_cob in df_cobranza.columns and col_fecha_prox in df_cobranza.columns:
+                    df_cobranza['_key'] = (
+                        df_cobranza[col_cod_cob].astype(str).str.strip().str.zfill(6) + '_' +
+                        df_cobranza[col_ciclo_cob].astype(str).str.strip().str.zfill(2)
+                    )
+                    # Parsear fecha próximo pago
+                    df_cobranza['_fecha_prox'] = pd.to_datetime(df_cobranza[col_fecha_prox], format='%d/%m/%Y', errors='coerce')
+
+                    # Crear mapeo key -> fecha
+                    fecha_hoy = pd.Timestamp.now().normalize()
+                    mapa_fecha_prox = {}
+                    for _, row in df_cobranza.iterrows():
+                        key = row['_key']
+                        fecha = row['_fecha_prox']
+                        # Solo incluir si fecha > hoy (es realmente un próximo pago)
+                        if pd.notna(fecha) and fecha > fecha_hoy:
+                            mapa_fecha_prox[key] = fecha
+
+                    # Crear columna en df
+                    df['_key'] = (
+                        df[columna_codigo].astype(str).str.strip().str.zfill(6) + '_' +
+                        df['Ciclo'].astype(str).str.strip().str.zfill(2)
+                    )
+                    df['Fecha próximo pago'] = df['_key'].map(mapa_fecha_prox)
+                    df = df.drop(columns=['_key'])
+
+                    n_cruzados = df['Fecha próximo pago'].notna().sum()
+                    logger.info(f"📅 Fecha próximo pago agregada: {n_cruzados} de {len(df)} registros cruzados (fechas futuras)")
+                else:
+                    logger.warning(f"⚠️ Rep_Cobranza no tiene las columnas esperadas: {col_cod_cob}, {col_ciclo_cob}, {col_fecha_prox}")
+            except Exception as e:
+                logger.warning(f"⚠️ Error procesando Rep_Cobranza: {e}")
 
         # --- PASO 2: Filtrar fraudes INMEDIATAMENTE después de la limpieza ---
         logger.info(f"Filtrando {len(LISTA_FRAUDE)} códigos de fraude")
@@ -3138,10 +3185,22 @@ def procesar_antiguedad():
         filename = secure_filename(archivo.filename)
         archivo_path = os.path.join(UPLOAD_FOLDER, filename)
         archivo.save(archivo_path)
-        
+
         logger.info(f"Archivo subido exitosamente: {filename} ({file_size} bytes)")
-        
-        ruta_salida, num_coordinaciones = procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None)
+
+        # Procesar archivo de cobranza si se subió
+        archivo_cobranza_path = None
+        if 'archivo_cobranza' in request.files:
+            archivo_cobranza = request.files['archivo_cobranza']
+            if archivo_cobranza.filename and allowed_file(archivo_cobranza.filename):
+                cobranza_filename = secure_filename(archivo_cobranza.filename)
+                archivo_cobranza_path = os.path.join(UPLOAD_FOLDER, f"cobranza_{cobranza_filename}")
+                archivo_cobranza.save(archivo_cobranza_path)
+                logger.info(f"Archivo de cobranza subido: {cobranza_filename}")
+
+        ruta_salida, num_coordinaciones = procesar_reporte_antiguedad(
+            archivo_path, codigos_a_excluir=None, archivo_cobranza_path=archivo_cobranza_path
+        )
         
         # Mover al directorio de reportes SIN modificar el nombre
         import shutil
@@ -3166,11 +3225,16 @@ def procesar_antiguedad():
             logger.error(f"Error guardando reporte principal: {str(e)}")
             db.session.rollback()
         
-        # Limpiar archivo temporal original
+        # Limpiar archivos temporales
         try:
             os.remove(archivo_path)
         except (OSError, FileNotFoundError):
             pass
+        if archivo_cobranza_path:
+            try:
+                os.remove(archivo_cobranza_path)
+            except (OSError, FileNotFoundError):
+                pass
         
         # Devolver el archivo generado directamente
         return send_file(
