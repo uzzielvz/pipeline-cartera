@@ -27,6 +27,230 @@
         { "codigo": "002648", "ciclo": "02", "nombre": "VAZQUEZ MEDINA HECTOR MANUEL" },
         { "codigo": "002369", "ciclo": "02", "nombre": "JIMENEZ GARCIA ANGELICA MARIBEL" }
       ]
+    },
+    {
+      "id": "metepec_001388",
+      "descripcion": "Corregir coordinacion de cliente 001388 de Atlacomulco a Metepec",
+      "activo": true,
+      "campo": "Coordinación",
+      "nuevo_valor": "Metepec",
+      "registros": [
+        { "codigo": "001388", "ciclo": "01", "nombre": "CLIENTE 1388 CICLO 1" },
+        { "codigo": "001388", "ciclo": "02", "nombre": "CLIENTE 1388 CICLO 2" },
+        { "codigo": "001388", "ciclo": "03", "nombre": "CLIENTE 1388 CICLO 3" },
+        { "codigo": "001388", "ciclo": "04", "nombre": "CLIENTE 1388 CICLO 4" },
+        { "codigo": "001388", "ciclo": "05", "nombre": "CLIENTE 1388 CICLO 5" }
+      ]
+    },
+    {
+      "id": "limpiar_001053",
+      "descripcion": "Omitir datos personales del cliente 001053 (nombre, telefonos, direccion)",
+      "activo": true,
+      "campo": "Nombre acreditado",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_tel1",
+      "descripcion": "Omitir Medio comunic. 1 del cliente 001053",
+      "activo": true,
+      "campo": "Medio comunic. 1",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_tel2",
+      "descripcion": "Omitir Medio comunic. 2 del cliente 001053",
+      "activo": true,
+      "campo": "Medio comunic. 2",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_tel3",
+      "descripcion": "Omitir Medio comunic. 3 del cliente 001053",
+      "activo": true,
+      "campo": "Medio comunic. 3",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_conyuge_nombre",
+      "descripcion": "Omitir Nombre conyuge del cliente 001053",
+      "activo": true,
+      "campo": "Nombre conyuge",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_conyuge_tel",
+      "descripcion": "Omitir Telefono conyuge del cliente 001053",
+      "activo": true,
+      "campo": "Teléfono conyuge",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_ref1_nombre",
+      "descripcion": "Omitir Nombre Referencia1 del cliente 001053",
+      "activo": true,
+      "campo": "Nombre Referencia1",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_ref1_tel",
+      "descripcion": "Omitir Telefono Referencia1 del cliente 001053",
+      "activo": true,
+      "campo": "Teléfono Referencia1",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_ref2_nombre",
+      "descripcion": "Omitir Nombre Referencia2 del cliente 001053",
+      "activo": true,
+      "campo": "Nombre Referencia2",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_ref2_tel",
+      "descripcion": "Omitir Telefono Referencia2 del cliente 001053",
+      "activo": true,
+      "campo": "Teléfono Referencia2",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_ref3_nombre",
+      "descripcion": "Omitir Nombre Referencia3 del cliente 001053",
+      "activo": true,
+      "campo": "Nombre Referencia3",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_ref3_tel",
+      "descripcion": "Omitir Telefono Referencia3 del cliente 001053",
+      "activo": true,
+      "campo": "Teléfono Referencia3",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_calle",
+      "descripcion": "Omitir Calle del cliente 001053",
+      "activo": true,
+      "campo": "Calle",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_colonia",
+      "descripcion": "Omitir Colonia del cliente 001053",
+      "activo": true,
+      "campo": "Colonia",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
+    },
+    {
+      "id": "limpiar_001053_geo",
+      "descripcion": "Omitir Geolocalizacion domicilio del cliente 001053",
+      "activo": true,
+      "campo": "Geolocalización domicilio",
+      "nuevo_valor": "",
+      "registros": [
+        { "codigo": "001053", "ciclo": "01", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "02", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "03", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "04", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" },
+        { "codigo": "001053", "ciclo": "05", "nombre": "VARGAS CASTAÑEDA JAVIER JESUS" }
+      ]
     }
   ]
 }
