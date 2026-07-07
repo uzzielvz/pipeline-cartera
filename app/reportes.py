@@ -1347,8 +1347,15 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None, archivo_co
                         df[columna_codigo].astype(str).str.strip().str.zfill(6) + '_' +
                         df['Ciclo'].astype(str).str.strip().str.zfill(2)
                     )
-                    df['Fecha próximo pago'] = df['_key'].map(mapa_fecha_prox)
+                    fecha_prox_values = df['_key'].map(mapa_fecha_prox)
                     df = df.drop(columns=['_key'])
+
+                    # Insertar "Fecha próximo pago" después de "Fin ciclo" (columna K -> L)
+                    if 'Fin ciclo' in df.columns:
+                        pos_fin_ciclo = df.columns.get_loc('Fin ciclo') + 1
+                        df.insert(pos_fin_ciclo, 'Fecha próximo pago', fecha_prox_values)
+                    else:
+                        df['Fecha próximo pago'] = fecha_prox_values
 
                     n_cruzados = df['Fecha próximo pago'].notna().sum()
                     logger.info(f"📅 Fecha próximo pago agregada: {n_cruzados} de {len(df)} registros cruzados (fechas futuras)")
@@ -1629,7 +1636,8 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None, archivo_co
             df_r_completo = agregar_columnas_nuevas(df_r_completo)
 
             # Iter 10: descartar columnas extra del archivo fuente (Fraude, vacías, etc.)
-            df_r_completo = df_r_completo.iloc[:, :74]
+            # 75 columnas: 63 originales + Fecha próximo pago + 11 calculadas
+            df_r_completo = df_r_completo.iloc[:, :75]
             logger.info(f"✅ df_r_completo recortado a {len(df_r_completo.columns)} columnas: {list(df_r_completo.columns[-3:])}")
 
             # Iter 11: agregar columna 'Suma' (col 75) — 1 si Días de mora está entre 1 y 30, else 0
@@ -1645,9 +1653,11 @@ def procesar_reporte_antiguedad(archivo_path, codigos_a_excluir=None, archivo_co
             # Llenar hoja R_Completo con los datos
             if 'R_Completo' in wb_plantilla.sheetnames:
                 ws_r_completo = wb_plantilla['R_Completo']
-                
-                # Row 2 (headers) viene completa desde la plantilla — no se toca para preservar el autoFilter de la tabla.
-                
+
+                # Escribir headers en fila 2 (sobrescribe los de la plantilla para incluir columnas nuevas como Fecha próximo pago)
+                for col_idx, col_name in enumerate(df_r_completo.columns, start=1):
+                    ws_r_completo.cell(row=2, column=col_idx, value=col_name)
+
                 # Escribir datos desde fila 3
                 logger.info(f"📝 Escribiendo {len(df_r_completo)} filas en R_Completo...")
                 for row_idx, (_, row) in enumerate(df_r_completo.iterrows(), start=3):
