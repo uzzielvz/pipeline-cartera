@@ -1137,12 +1137,16 @@ def aplicar_formato_final(worksheet, df, es_hoja_mora=False):
 
 def aplicar_formato_condicional(worksheet, columna_mora, num_filas):
     """Aplica formato condicional de colores a la columna de días de mora"""
+    # Skip if no data rows
+    if num_filas < 1:
+        return
+
     color_scale_rule = ColorScaleRule(
         start_type='min', start_color='7AB800', # Verde
         mid_type='percentile', mid_value=50, mid_color='FFEB84', # Amarillo
         end_type='max', end_color='FF6464' # Rojo
     )
-    
+
     # Encuentra la letra de la columna 'Días de mora' (ahora en fila 2)
     mora_col_letter = [col[0].column_letter for col in worksheet.iter_cols(min_row=2, max_row=2) if col[0].value == columna_mora][0]
     # Aplicar formato desde fila 3 (datos) hasta el final
